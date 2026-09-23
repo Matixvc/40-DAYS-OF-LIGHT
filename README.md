@@ -16,7 +16,7 @@
 - **IA Enemiga Progresiva:** Los Imps utilizan `NavMeshAgent` para perseguir al jugador, realizando ataques frontales con cálculo de ángulo relativo (`Vector3.Dot`) y escalado de dificultad por oleadas.
 - **Ciclo de Experiencia y Subida de Nivel:** Las gemas de XP eliminadas cuentan con un sistema de atracción magnética hacia el jugador. Al completar la barra de XP, el juego congela el tiempo e invoca una interfaz dinámica de cartas de mejora (`LevelUpUI`).
 - **Sistema de Audio Robusto y Anti-Saturación:** Gestor de audio centralizado (`AudioManager`) con asignación a `AudioMixer` (`Music` y `SFX`), pool de `AudioSources`, variación aleatoria de *pitch*, e intervalos mínimos (0.04s) para evitar la saturación de efectos en combate.
-- **Playlist BGM Automática:** Sistema de música de fondo en bucle que alterna suavemente entre múltiples pistas `.mp3` configuradas en `Streaming`.
+- **Playlist BGM Automática:** Sistema de música de fondo en bucle que alterna suavemente entre múltiples pistas `.mp3` configuradas en la playlist.
 
 ---
 
@@ -27,8 +27,8 @@ El proyecto está diseñado bajo estándares de código limpio, modularidad y op
 1. **ScriptableObjects (SO):** Arquitectura orientada a datos (*Data-Driven Design*) utilizada para definir estadísticas de personajes (`CharacterDataSO`), armas (`WeaponDataSO`), enemigos (`EnemyDataSO`) y cartas de mejora (`UpgradeDataSO`).
 2. **Singleton Pattern:** Implementado en el `AudioManager` para garantizar un punto de acceso global y persistencia entre escenas con `DontDestroyOnLoad`.
 3. **Object Pooling & Anti-Saturation:** Pool de 12 `AudioSources` reutilizables para optimizar la instanciación de efectos sonoros en combates masivos.
-4. **Context Menu Resetting:** Implementación de atributos `[ContextMenu]` en todos los ScriptableObjects para permitir a los desarrolladores restaurar estadísticas base desde el Inspector con un solo clic.
-5. **Decoupled UI & Events:** Separación estricta entre la lógica de juego y la interfaz a través de C# Actions/Events (`OnXPChanged`, `OnHealthChanged`).
+4. **Context Menu Resetting:** Implementación de atributos `[ContextMenu]` en todos los ScriptableObjects para permitir restaurar estadísticas base desde el Inspector con un solo clic.
+5. **Decoupled UI & Events:** Separación estricta entre la lógica de juego y la interfaz a través de C# Actions/Events (`OnXPChanged`).
 
 ---
 
@@ -37,6 +37,8 @@ El proyecto está diseñado bajo estándares de código limpio, modularidad y op
 ```text
 Assets/
 ├── Audio/
+│   ├── BGM/
+│   └── SFX/
 ├── AudioMixer/
 │   └── MasterMixer.mixer
 ├── Animations/
@@ -71,3 +73,49 @@ Assets/
         ├── PauseMenu.cs
         ├── UpgradeCardUI.cs
         └── XPGem.cs
+
+```
+
+---
+
+## 🕹️ Controles
+
+| Acción | Tecla / Control |
+| --- | --- |
+| **Moverse** | `W`, `A`, `S`, `D` / Flechas de dirección |
+| **Sprint / Correr** | `Shift Izquierdo` / `Espacio` / `Clic Izquierdo` |
+| **Ataque (Destello)** | *Automático* (Basado en cooldown) |
+| **Menú de Pausa** | `ESC` / `P` |
+
+---
+
+## 🚀 Instalación y Configuración
+
+1. **Clonar el repositorio:**
+```bash
+git clone [https://github.com/TU-USUARIO/NOMBRE-DEL-REPOSITORIO.git](https://github.com/TU-USUARIO/NOMBRE-DEL-REPOSITORIO.git)
+
+```
+
+
+2. **Abrir en Unity:**
+* Abre **Unity Hub**.
+* Haz clic en **Add** y selecciona la carpeta clonada.
+* Asegúrate de abrir el proyecto con **Unity 2022.3 LTS** o superior.
+
+
+3. **Ejecutar:**
+* Abre la escena principal ubicada en `Assets/Scenes/MainScene.unity`.
+* Presiona **Play**.
+
+
+
+---
+
+## 📜 Licencia
+
+Este proyecto está bajo la Licencia **MIT**. Consulta el archivo `LICENSE` para más detalles.
+
+```
+
+```
