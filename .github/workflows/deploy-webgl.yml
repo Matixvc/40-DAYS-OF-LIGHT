@@ -12,22 +12,22 @@ jobs:
     steps:
       # 1. Checkout del código
       - name: Checkout repository
-        uses: actions/checkout@v3
+        uses: actions/checkout@v4
         with:
           lfs: true
 
       # 2. Cache de la librería para acelerar futuras compilaciones
       - name: Cache Unity Library
-        uses: actions/cache@v3
+        uses: actions/cache@v4
         with:
           path: Library
           key: Library-WebGL-${{ hashFiles('Assets/**', 'Packages/**') }}
           restore-keys: |
             Library-WebGL-
 
-      # 3. Compilar el proyecto a WebGL
+      # 3. Compilar el proyecto a WebGL (Soporte para Unity 6)
       - name: Unity Build WebGL
-        uses: game-ci/unity-builder@v3
+        uses: game-ci/unity-builder@v4
         env:
           UNITY_LICENSE: ${{ secrets.UNITY_LICENSE }}
           UNITY_EMAIL: ${{ secrets.UNITY_EMAIL }}
@@ -37,7 +37,7 @@ jobs:
 
       # 4. Publicar en GitHub Pages
       - name: Deploy to GitHub Pages
-        uses: peaceiris/actions-gh-pages@v3
+        uses: peaceiris/actions-gh-pages@v4
         with:
           github_token: ${{ secrets.GITHUB_TOKEN }}
           publish_dir: ./build/WebGL/WebGL
