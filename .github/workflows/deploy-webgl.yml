@@ -3,18 +3,20 @@ name: Build and Deploy WebGL
 on:
   push:
     branches:
-      - main # O 'master' si usas ese nombre de rama
+      - main # Si tu rama principal se llama 'master', cámbialo a master aquí
 
 jobs:
   build:
     name: Build WebGL
     runs-on: ubuntu-latest
     steps:
+      # 1. Obtenemos el código del repositorio
       - name: Checkout repository
         uses: actions/checkout@v4
         with:
           lfs: true
 
+      # 2. Guardamos la caché de la librería de Unity para acelerar futuros builds
       - name: Cache Unity Library
         uses: actions/cache@v4
         with:
@@ -23,13 +25,17 @@ jobs:
           restore-keys: |
             Library-WebGL-
 
+      # 3. Compilamos el proyecto a WebGL autenticando con tus credenciales
       - name: Unity Build WebGL
         uses: game-ci/unity-builder@v4
         env:
-          UNITY_LICENSE: ${{ secrets.UNITY_LICENSE }}
+          UNITY_EMAIL: ${{ secrets.UNITY_EMAIL }}
+          UNITY_PASSWORD: ${{ secrets.UNITY_PASSWORD }}
+          UNITY_SERIAL: ${{ secrets.UNITY_SERIAL }}
         with:
           targetPlatform: WebGL
 
+      # 4. Publicamos el resultado automáticamente en GitHub Pages
       - name: Deploy to GitHub Pages
         uses: peaceiris/actions-gh-pages@v4
         with:
