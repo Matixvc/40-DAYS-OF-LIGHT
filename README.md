@@ -115,7 +115,3 @@ git clone [https://github.com/TU-USUARIO/NOMBRE-DEL-REPOSITORIO.git](https://git
 ## 📜 Licencia
 
 Este proyecto está bajo la Licencia **MIT**. Consulta el archivo `LICENSE` para más detalles.
-
-```
-
-```
