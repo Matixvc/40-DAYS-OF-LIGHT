@@ -1,0 +1,21 @@
+name: Acquire Unity License File
+
+on:
+  workflow_dispatch:
+
+jobs:
+  activation:
+    name: Request manual activation file (.ulf)
+    runs-on: ubuntu-latest
+    steps:
+      # 1. Solicitar el archivo .alf de activación
+      - name: Request manual activation file
+        uses: game-ci/unity-request-activation-file@v2
+        id: step1
+
+      # 2. Subir el archivo .alf como Artifact
+      - name: Upload activation file
+        uses: actions/upload-artifact@v4
+        with:
+          name: ManualActivationFile
+          path: ${{ steps.step1.outputs.filePath }}
