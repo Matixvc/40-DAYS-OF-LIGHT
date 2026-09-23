@@ -3876,6 +3876,7 @@ MonoBehaviour:
   m_EditorClassIdentifier: Assembly-CSharp::PlayerController
   stats: {fileID: 11400000, guid: 8149d95018c91244eb7f9664cca52f4e, type: 2}
   gravity: -9.81
+  playerAttackSFX: {fileID: 0}
 --- !u!4 &1062963154 stripped
 Transform:
   m_CorrespondingSourceObject: {fileID: -8679921383154817045, guid: 99337cf7c10c21d408197dbed34c8dd8, type: 3}
