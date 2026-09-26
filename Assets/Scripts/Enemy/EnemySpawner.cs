@@ -43,6 +43,10 @@ public class EnemySpawner : MonoBehaviour
     private bool spawningEnabled = true;
     private EnemyScalingProfile scalingProfile = EnemyScalingProfile.One;
 
+    // Conteo de enemigos vivos sin Find: se incrementa al spawnear y se decrementa al morir (cero GC).
+    private int aliveEnemiesCount;
+    private readonly System.Collections.Generic.HashSet<HealthComponent> trackedEnemies = new System.Collections.Generic.HashSet<HealthComponent>();
+
     private void Start()
     {
         // Ritmo base: el RunDirector lo reajusta en cuanto arranca la primera ronda.
@@ -73,7 +77,8 @@ public class EnemySpawner : MonoBehaviour
         // Spawn continuo según el intervalo actual de la ronda
         if (Time.time >= nextSpawnTime)
         {
-            int aliveEnemies = GameObject.FindGameObjectsWithTag("Enemy").Length;
+            // Cero GC: usa el pool o el contador interno en lugar de FindGameObjectsWithTag.
+            int aliveEnemies = GetAliveEnemiesCount();
             int freeSlots = currentMaxEnemies - aliveEnemies;
 
             // Spawn en ráfaga: en rondas avanzadas se generan varios enemigos por ciclo si hay hueco.
@@ -137,7 +142,59 @@ public class EnemySpawner : MonoBehaviour
         if (newEnemy == null) return false;
 
         ConfigureSpawnedEnemy(newEnemy);
+        TrackSpawnedEnemy(newEnemy);
         return true;
+    }
+
+    /// <summary>Enemigos vivos actuales: prefiere el pool, usa el contador si no hay pool.</summary>
+    private int GetAliveEnemiesCount()
+    {
+        ObjectPoolManager pool = ObjectPoolManager.Instance;
+
+        if (pool != null && enemyPrefab != null)
+        {
+            return pool.GetActiveCount(enemyPrefab);
+        }
+
+        // Sin pool: limpia referencias muertas y devuelve el conteo rastreado.
+        trackedEnemies.RemoveWhere(h => h == null);
+        aliveEnemiesCount = trackedEnemies.Count;
+        return aliveEnemiesCount;
+    }
+
+    /// <summary>Registra un enemigo nuevo para descontarlo al morir (sin Find).</summary>
+    private void TrackSpawnedEnemy(GameObject spawnedEnemy)
+    {
+        HealthComponent health = spawnedEnemy != null ? spawnedEnemy.GetComponentInChildren<HealthComponent>(true) : null;
+
+        if (health == null) return;
+
+        if (trackedEnemies.Add(health))
+        {
+            aliveEnemiesCount++;
+        }
+
+        health.OnDeath -= HandleTrackedEnemyDeath;
+        health.OnDeath += HandleTrackedEnemyDeath;
+    }
+
+    private void HandleTrackedEnemyDeath()
+    {
+        aliveEnemiesCount = Mathf.Max(0, aliveEnemiesCount - 1);
+    }
+
+    private void OnDestroy()
+    {
+        foreach (HealthComponent health in trackedEnemies)
+        {
+            if (health != null)
+            {
+                health.OnDeath -= HandleTrackedEnemyDeath;
+            }
+        }
+
+        trackedEnemies.Clear();
+        aliveEnemiesCount = 0;
     }
 
     // ======================================================================

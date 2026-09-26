@@ -395,6 +395,17 @@
                 },
                 {
                     "name": "",
+                    "id": "a3e91c55-2f4d-4a6b-9c1e-7d2b5f8a0c3d",
+                    "path": "<Keyboard>/space",
+                    "interactions": "",
+                    "processors": "",
+                    "groups": "Keyboard&Mouse",
+                    "action": "Sprint",
+                    "isComposite": false,
+                    "isPartOfComposite": false
+                },
+                {
+                    "name": "",
                     "id": "d8bf24bf-3f2f-4160-a97c-38ec1eb520ba",
                     "path": "<XRController>/trigger",
                     "interactions": "",
@@ -518,6 +529,17 @@
                     "name": "",
                     "id": "57670660-6bc1-42e1-a3e0-10a93cc83f1e",
                     "path": "<Gamepad>/start",
+                    "interactions": "",
+                    "processors": "",
+                    "groups": ";Gamepad",
+                    "action": "Pause",
+                    "isComposite": false,
+                    "isPartOfComposite": false
+                },
+                {
+                    "name": "",
+                    "id": "c7d2e4a1-9b3f-4c8e-a5d6-1e2f3a4b5c6d",
+                    "path": "<Gamepad>/buttonEast",
                     "interactions": "",
                     "processors": "",
                     "groups": ";Gamepad",

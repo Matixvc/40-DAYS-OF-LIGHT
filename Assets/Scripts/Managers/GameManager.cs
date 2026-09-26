@@ -16,6 +16,12 @@ public class GameManager : MonoBehaviour
     [Header("Referencias del Jugador")]
     [SerializeField] private PlayerLevelSystem playerLevelSystem;
 
+    [Header("Menú principal")]
+    [Tooltip("Escena del menú principal (debe estar en Build Settings).")]
+    [SerializeField] private string mainMenuSceneName = "MainMenu";
+    [Tooltip("Botón opcional 'Menú principal' dentro del panel de Game Over.")]
+    [SerializeField] private UnityEngine.UI.Button quitToMenuButton;
+
     [Header("Input (Input System)")]
     [Tooltip("Lector de input del jugador. Si se deja vacío se resuelve automáticamente.")]
     [SerializeField] private PlayerInputReader inputReader;
@@ -48,6 +54,7 @@ public class GameManager : MonoBehaviour
         }
 
         ResolveInputReader();
+        WireQuitToMenuButton();
 
         // Garantizar que la UI de Game Over esté apagada al iniciar la partida
         if (gameOverUI != null)
@@ -96,6 +103,41 @@ public class GameManager : MonoBehaviour
 
         inputReader.RestartPressed -= HandleRestartPressed;
         inputReader.RestartPressed += HandleRestartPressed;
+    }
+
+    private void WireQuitToMenuButton()
+    {
+        if (quitToMenuButton == null) return;
+
+        quitToMenuButton.onClick.RemoveListener(GoToMainMenu);
+        quitToMenuButton.onClick.AddListener(GoToMainMenu);
+    }
+
+    /// <summary>Salir al menú principal: restaura el tiempo antes de cargar la escena.</summary>
+    public void GoToMainMenu()
+    {
+        if (string.IsNullOrWhiteSpace(mainMenuSceneName) || !Application.CanStreamedLevelBeLoaded(mainMenuSceneName))
+        {
+            Debug.LogError(
+                $"[GameManager] No se puede cargar el menú: la escena '{mainMenuSceneName}' no está configurada o no está en Build Settings.",
+                this);
+            return;
+        }
+
+        isGameOver = false;
+
+        GameStateController stateController = GameStateController.Instance;
+        if (stateController != null)
+        {
+            stateController.PrepareForSceneLoad();
+        }
+        else
+        {
+            Time.timeScale = 1f;
+        }
+
+        Debug.Log($"[GameManager] Cargando menú principal ('{mainMenuSceneName}')…", this);
+        SceneManager.LoadScene(mainMenuSceneName);
     }
 
     /// <summary>Reinicio disparado por el Input System (R o botón del mando).</summary>

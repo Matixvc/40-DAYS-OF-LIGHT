@@ -14,7 +14,32 @@ public class XPGem : MonoBehaviour, IPooledObject
     [SerializeField] private AudioClip gemPickupSFX; // Arrastrar GetXP.mp3 aqui
 
     private Transform playerTransform;
+    private PlayerLevelSystem cachedPlayerLevel;
     private bool isMagnetized = false;
+
+    private void Awake()
+    {
+        ResolvePlayer();
+    }
+
+    private void Start()
+    {
+        ResolvePlayer();
+    }
+
+    /// <summary>Cachea el Player una sola vez: nunca se busca dentro de Update.</summary>
+    private void ResolvePlayer()
+    {
+        if (cachedPlayerLevel != null && playerTransform != null) return;
+
+        PlayerLevelSystem player = cachedPlayerLevel != null ? cachedPlayerLevel : FindAnyObjectByType<PlayerLevelSystem>();
+
+        if (player != null)
+        {
+            cachedPlayerLevel = player;
+            playerTransform = player.transform;
+        }
+    }
 
     public void SetXPValue(float amount)
     {
@@ -38,13 +63,9 @@ public class XPGem : MonoBehaviour, IPooledObject
 
     private void Update()
     {
-        if (playerTransform == null)
+        if (playerTransform == null || cachedPlayerLevel == null)
         {
-            PlayerLevelSystem player = FindAnyObjectByType<PlayerLevelSystem>();
-            if (player != null)
-            {
-                playerTransform = player.transform;
-            }
+            ResolvePlayer();
             return;
         }
 
@@ -61,7 +82,7 @@ public class XPGem : MonoBehaviour, IPooledObject
 
             if (distance <= collectRadius)
             {
-                Collect(playerTransform.GetComponent<PlayerLevelSystem>());
+                Collect(cachedPlayerLevel);
             }
         }
     }

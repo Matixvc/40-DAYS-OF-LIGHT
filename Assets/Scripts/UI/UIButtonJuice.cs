@@ -5,6 +5,7 @@ using UnityEngine.EventSystems;
 public class UIButtonJuice : MonoBehaviour, IPointerEnterHandler, IPointerExitHandler
 {
     private Vector3 originalScale;
+    private Coroutine pulseCoroutine;
 
     private void Awake()
     {
@@ -13,8 +14,23 @@ public class UIButtonJuice : MonoBehaviour, IPointerEnterHandler, IPointerExitHa
 
     private void OnEnable()
     {
-        // Animación de respiración continua usando unscaledTime
-        StartCoroutine(PulseAnimation());
+        // Animación de respiración continua usando unscaledTime.
+        // Se guarda la corrutina para detenerla en OnDisable y evitar loops en segundo plano.
+        if (pulseCoroutine == null)
+        {
+            pulseCoroutine = StartCoroutine(PulseAnimation());
+        }
+    }
+
+    private void OnDisable()
+    {
+        if (pulseCoroutine != null)
+        {
+            StopCoroutine(pulseCoroutine);
+            pulseCoroutine = null;
+        }
+
+        transform.localScale = originalScale;
     }
 
     private IEnumerator PulseAnimation()

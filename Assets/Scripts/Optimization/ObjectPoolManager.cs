@@ -54,6 +54,17 @@ public class ObjectPoolManager : MonoBehaviour
         return instance != null && poolByInstance.ContainsKey(instance);
     }
 
+    /// <summary>Número de instancias activas de un prefab (0 si no hay pool). Cero asignaciones: no usa Find.</summary>
+    public int GetActiveCount(GameObject prefab)
+    {
+        if (prefab != null && poolByPrefab.TryGetValue(prefab, out PoolDefinition pool) && pool != null && pool.active != null)
+        {
+            return pool.active.Count;
+        }
+
+        return 0;
+    }
+
     private void Awake()
     {
         if (Instance != null && Instance != this)
@@ -255,11 +266,6 @@ public class ObjectPoolManager : MonoBehaviour
         {
             Despawn(instances[i]); // Ignora los que ya estaban devueltos
         }
-    }
-
-    public int GetActiveCount(GameObject prefab)
-    {
-        return poolByPrefab.TryGetValue(prefab, out PoolDefinition pool) ? pool.active.Count : 0;
     }
 
     public int GetAvailableCount(GameObject prefab)
