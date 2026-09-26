@@ -14,9 +14,9 @@ OcclusionCullingSettings:
 RenderSettings:
   m_ObjectHideFlags: 0
   serializedVersion: 10
-  m_Fog: 0
+  m_Fog: 1
   m_FogColor: {r: 0.5, g: 0.5, b: 0.5, a: 1}
-  m_FogMode: 3
+  m_FogMode: 1
   m_FogDensity: 0.01
   m_LinearFogStart: 0
   m_LinearFogEnd: 300
@@ -870,7 +870,7 @@ Light:
   m_InnerSpotAngle: 21.80208
   m_CookieSize2D: {x: 0.5, y: 0.5}
   m_Shadows:
-    m_Type: 2
+    m_Type: 1
     m_Resolution: -1
     m_CustomResolution: -1
     m_Strength: 1
@@ -2485,6 +2485,65 @@ CanvasRenderer:
   m_PrefabAsset: {fileID: 0}
   m_GameObject: {fileID: 357165359}
   m_CullTransparentMesh: 1
+--- !u!1 &368323433
+GameObject:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  serializedVersion: 6
+  m_Component:
+  - component: {fileID: 368323434}
+  - component: {fileID: 368323435}
+  m_Layer: 5
+  m_Name: UIMobile
+  m_TagString: Untagged
+  m_Icon: {fileID: 2800000, guid: 9ba98ca4f0fc0754caca09e38af0cc0a, type: 3}
+  m_NavMeshLayer: 0
+  m_StaticEditorFlags: 0
+  m_IsActive: 1
+--- !u!224 &368323434
+RectTransform:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 368323433}
+  m_LocalRotation: {x: 0, y: 0, z: 0, w: 1}
+  m_LocalPosition: {x: 0, y: 0, z: 0}
+  m_LocalScale: {x: 1, y: 1, z: 1}
+  m_ConstrainProportionsScale: 0
+  m_Children:
+  - {fileID: 1031730653}
+  - {fileID: 1401794887}
+  - {fileID: 869285758}
+  m_Father: {fileID: 1775404367}
+  m_LocalEulerAnglesHint: {x: 0, y: 0, z: 0}
+  m_AnchorMin: {x: 0.5, y: 0.5}
+  m_AnchorMax: {x: 0.5, y: 0.5}
+  m_AnchoredPosition: {x: 0, y: 0}
+  m_SizeDelta: {x: 100, y: 100}
+  m_Pivot: {x: 0.5, y: 0.5}
+--- !u!114 &368323435
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 368323433}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: bfff451768f8b52418c23614551117d7, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: Assembly-CSharp::TouchControlsUI
+  enableOnTouchDevices: 1
+  forceVisibleInEditor: 0
+  controlsRoot: {fileID: 368323433}
+  moveJoystick: {fileID: 409431995}
+  sprintButton: {fileID: 1401794891}
+  pauseButton: {fileID: 869285763}
+  controlSchemeText: {fileID: 0}
+  logState: 1
 --- !u!1 &393875282
 GameObject:
   m_ObjectHideFlags: 0
@@ -2770,7 +2829,7 @@ MonoBehaviour:
     m_Bits: 1
   m_VolumeTrigger: {fileID: 0}
   m_VolumeFrameworkUpdateModeOption: 2
-  m_RenderPostProcessing: 0
+  m_RenderPostProcessing: 1
   m_Antialiasing: 0
   m_AntialiasingQuality: 2
   m_StopNaN: 0
@@ -4001,6 +4060,7 @@ GameObject:
   - component: {fileID: 677101667}
   - component: {fileID: 677101668}
   - component: {fileID: 677101669}
+  - component: {fileID: 677101670}
   m_Layer: 0
   m_Name: Managers
   m_TagString: Untagged
@@ -4104,6 +4164,36 @@ MonoBehaviour:
   mobileQualityLevel: -1
   disableRealtimeShadowsOnMobile: 0
   logSettings: 1
+--- !u!114 &677101670
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 677101665}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 9281db5e07e64414880426ef91d917b6, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: Assembly-CSharp::PostProcessingBootstrap
+  profile: {fileID: 0}
+  createGlobalVolumeIfMissing: 1
+  assignProfileIfEmpty: 1
+  targetCamera: {fileID: 430359199}
+  enablePostProcessingOnCamera: 1
+  bloomThreshold: 0.85
+  bloomIntensity: 0.4
+  bloomScatter: 0.6
+  bloomFilterMode: 1
+  bloomDownscale: 1
+  vignetteIntensity: 0.28
+  vignetteSmoothness: 0.35
+  postExposure: 0.15
+  contrast: 12
+  saturation: 10
+  colorFilter: {r: 1, g: 0.96, b: 0.9, a: 1}
+  tonemappingMode: 1
+  logSetup: 1
 --- !u!1 &716738953
 GameObject:
   m_ObjectHideFlags: 0
@@ -4987,16 +5077,16 @@ RectTransform:
   m_PrefabInstance: {fileID: 0}
   m_PrefabAsset: {fileID: 0}
   m_GameObject: {fileID: 869285757}
-  m_LocalRotation: {x: 0, y: 0, z: 0, w: 1}
+  m_LocalRotation: {x: -0, y: -0, z: -0, w: 1}
   m_LocalPosition: {x: 0, y: 0, z: 0}
   m_LocalScale: {x: 1, y: 1, z: 1}
   m_ConstrainProportionsScale: 0
   m_Children: []
-  m_Father: {fileID: 1775404367}
+  m_Father: {fileID: 368323434}
   m_LocalEulerAnglesHint: {x: 0, y: 0, z: 0}
   m_AnchorMin: {x: 0, y: 1}
   m_AnchorMax: {x: 0, y: 1}
-  m_AnchoredPosition: {x: 30, y: -50}
+  m_AnchoredPosition: {x: -880.3846, y: 439.78375}
   m_SizeDelta: {x: 80, y: 80}
   m_Pivot: {x: 0, y: 1}
 --- !u!114 &869285760
@@ -5021,7 +5111,7 @@ MonoBehaviour:
   m_Transition: 1
   m_Colors:
     m_NormalColor: {r: 0, g: 0, b: 0, a: 1}
-    m_HighlightedColor: {r: 0.90188676, g: 0.90188676, b: 0.90188676, a: 1}
+    m_HighlightedColor: {r: 0.4943396, g: 0.4943396, b: 0.4943396, a: 1}
     m_PressedColor: {r: 0.3207547, g: 0.3207547, b: 0.3207547, a: 1}
     m_SelectedColor: {r: 0, g: 0, b: 0, a: 1}
     m_DisabledColor: {r: 0, g: 0, b: 0, a: 0.5019608}
@@ -5093,7 +5183,8 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: ee8badac318c7f8459c9e498d4d262ad, type: 3}
   m_Name: 
   m_EditorClassIdentifier: Assembly-CSharp::VirtualButton
-  pressedVisual: {fileID: 869285757}
+  pressedScale: 0.94
+  pressedColorDim: 0.85
 --- !u!1 &918512119
 GameObject:
   m_ObjectHideFlags: 0
@@ -5279,11 +5370,10 @@ GameObject:
   serializedVersion: 6
   m_Component:
   - component: {fileID: 1031730653}
-  - component: {fileID: 1031730654}
   m_Layer: 5
   m_Name: TouchControls
   m_TagString: Untagged
-  m_Icon: {fileID: 2800000, guid: e01ab4b854c6d4fa3a8d869b67ecd643, type: 3}
+  m_Icon: {fileID: 2800000, guid: b2d98f54996544507ade581c727c1c51, type: 3}
   m_NavMeshLayer: 0
   m_StaticEditorFlags: 0
   m_IsActive: 1
@@ -5294,39 +5384,19 @@ RectTransform:
   m_PrefabInstance: {fileID: 0}
   m_PrefabAsset: {fileID: 0}
   m_GameObject: {fileID: 1031730652}
-  m_LocalRotation: {x: 0, y: 0, z: 0, w: 1}
+  m_LocalRotation: {x: -0, y: -0, z: -0, w: 1}
   m_LocalPosition: {x: 0, y: 0, z: 0}
   m_LocalScale: {x: 1, y: 1, z: 1}
   m_ConstrainProportionsScale: 0
   m_Children:
   - {fileID: 409431992}
-  m_Father: {fileID: 1775404367}
+  m_Father: {fileID: 368323434}
   m_LocalEulerAnglesHint: {x: 0, y: 0, z: 0}
   m_AnchorMin: {x: 0, y: 0}
   m_AnchorMax: {x: 1, y: 1}
   m_AnchoredPosition: {x: 0, y: 0}
-  m_SizeDelta: {x: 0, y: 0}
+  m_SizeDelta: {x: 1820.7692, y: 979.5676}
   m_Pivot: {x: 0.5, y: 0.5}
---- !u!114 &1031730654
-MonoBehaviour:
-  m_ObjectHideFlags: 0
-  m_CorrespondingSourceObject: {fileID: 0}
-  m_PrefabInstance: {fileID: 0}
-  m_PrefabAsset: {fileID: 0}
-  m_GameObject: {fileID: 1031730652}
-  m_Enabled: 1
-  m_EditorHideFlags: 0
-  m_Script: {fileID: 11500000, guid: bfff451768f8b52418c23614551117d7, type: 3}
-  m_Name: 
-  m_EditorClassIdentifier: Assembly-CSharp::TouchControlsUI
-  enableOnTouchDevices: 1
-  forceVisibleInEditor: 0
-  controlsRoot: {fileID: 1031730652}
-  moveJoystick: {fileID: 409431995}
-  sprintButton: {fileID: 1401794891}
-  pauseButton: {fileID: 869285763}
-  controlSchemeText: {fileID: 0}
-  logState: 1
 --- !u!1001 &1062963149
 PrefabInstance:
   m_ObjectHideFlags: 0
@@ -5708,7 +5778,7 @@ MonoBehaviour:
   stats: {fileID: 11400000, guid: 8149d95018c91244eb7f9664cca52f4e, type: 2}
   gravity: -9.81
   runStats: {fileID: 1062963162}
-  inputReader: {fileID: 0}
+  inputReader: {fileID: 1062963164}
   logStatsChanges: 1
 --- !u!4 &1062963154 stripped
 Transform:
@@ -5819,10 +5889,10 @@ MonoBehaviour:
   m_Name: 
   m_EditorClassIdentifier: Assembly-CSharp::PlayerInputReader
   actionsAsset: {fileID: -944628639613478452, guid: 052faaac586de48259a63d0c4782560b, type: 3}
-  moveActionReference: {fileID: 0}
-  sprintActionReference: {fileID: 0}
-  pauseActionReference: {fileID: 0}
-  restartActionReference: {fileID: 0}
+  moveActionReference: {fileID: -1680190386980627800, guid: 052faaac586de48259a63d0c4782560b, type: 3}
+  sprintActionReference: {fileID: -7471211009204490832, guid: 052faaac586de48259a63d0c4782560b, type: 3}
+  pauseActionReference: {fileID: -9153950281066055378, guid: 052faaac586de48259a63d0c4782560b, type: 3}
+  restartActionReference: {fileID: -2212649515036762661, guid: 052faaac586de48259a63d0c4782560b, type: 3}
   moveActionName: Player/Move
   sprintActionName: Player/Sprint
   pauseActionName: Player/Pause
@@ -7346,16 +7416,16 @@ RectTransform:
   m_PrefabInstance: {fileID: 0}
   m_PrefabAsset: {fileID: 0}
   m_GameObject: {fileID: 1401794886}
-  m_LocalRotation: {x: 0, y: 0, z: 0, w: 1}
+  m_LocalRotation: {x: -0, y: -0, z: -0, w: 1}
   m_LocalPosition: {x: 0, y: 0, z: 0}
   m_LocalScale: {x: 1, y: 1, z: 1}
   m_ConstrainProportionsScale: 0
   m_Children: []
-  m_Father: {fileID: 1775404367}
+  m_Father: {fileID: 368323434}
   m_LocalEulerAnglesHint: {x: 0, y: 0, z: 0}
   m_AnchorMin: {x: 1, y: 0}
   m_AnchorMax: {x: 1, y: 0}
-  m_AnchoredPosition: {x: -200, y: 200}
+  m_AnchoredPosition: {x: 710.3847, y: -289.78384}
   m_SizeDelta: {x: 150, y: 150}
   m_Pivot: {x: 1, y: 0}
 --- !u!114 &1401794888
@@ -7452,7 +7522,8 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: ee8badac318c7f8459c9e498d4d262ad, type: 3}
   m_Name: 
   m_EditorClassIdentifier: Assembly-CSharp::VirtualButton
-  pressedVisual: {fileID: 1401794886}
+  pressedScale: 0.94
+  pressedColorDim: 0.85
 --- !u!1 &1424316213
 GameObject:
   m_ObjectHideFlags: 0
@@ -8231,6 +8302,75 @@ MeshFilter:
   m_PrefabAsset: {fileID: 0}
   m_GameObject: {fileID: 1606107764}
   m_Mesh: {fileID: 10206, guid: 0000000000000000e000000000000000, type: 0}
+--- !u!1 &1627496963
+GameObject:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  serializedVersion: 6
+  m_Component:
+  - component: {fileID: 1627496964}
+  - component: {fileID: 1627496965}
+  m_Layer: 0
+  m_Name: EnvironmentLighting
+  m_TagString: Untagged
+  m_Icon: {fileID: -5938655980376293919, guid: 0000000000000000d000000000000000, type: 0}
+  m_NavMeshLayer: 0
+  m_StaticEditorFlags: 0
+  m_IsActive: 1
+--- !u!4 &1627496964
+Transform:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 1627496963}
+  serializedVersion: 2
+  m_LocalRotation: {x: 0, y: 0, z: 0, w: 1}
+  m_LocalPosition: {x: 0, y: 0, z: 0}
+  m_LocalScale: {x: 1, y: 1, z: 1}
+  m_ConstrainProportionsScale: 0
+  m_Children: []
+  m_Father: {fileID: 0}
+  m_LocalEulerAnglesHint: {x: 0, y: 0, z: 0}
+--- !u!114 &1627496965
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 1627496963}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 8847c93505326e54d9de609bd9913a2c, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: Assembly-CSharp::EnvironmentLightingController
+  daySkyboxMaterial: {fileID: 2100000, guid: 003b56f53ceea38499a46264984628bf, type: 2}
+  nightSkyboxMaterial: {fileID: 2100000, guid: 393d1e5299e73e349840cba1ef2e9e75, type: 2}
+  refreshAmbientProbe: 1
+  directionalLight: {fileID: 74611178}
+  dayLightColor: {r: 1, g: 0.95, b: 0.85, a: 1}
+  dayLightIntensity: 1.2
+  dayFogColor: {r: 0.78, g: 0.68, b: 0.52, a: 1}
+  dayFogStart: 40
+  dayFogEnd: 250
+  nightLightColor: {r: 0.55, g: 0.65, b: 1, a: 1}
+  nightLightIntensity: 0.35
+  nightFogColor: {r: 0.05, g: 0.07, b: 0.15, a: 1}
+  nightFogStart: 25
+  nightFogEnd: 160
+  driveFog: 1
+  transitionDuration: 3
+  postProcessVolume: {fileID: 0}
+  tintColorGrade: 1
+  dayColorFilter: {r: 1, g: 0.97, b: 0.9, a: 1}
+  dayContrast: 12
+  daySaturation: 10
+  nightColorFilter: {r: 0.78, g: 0.83, b: 1, a: 1}
+  nightContrast: 4
+  nightSaturation: -6
+  logTransitions: 1
 --- !u!1 &1635253438
 GameObject:
   m_ObjectHideFlags: 0
@@ -9387,9 +9527,7 @@ RectTransform:
   - {fileID: 918512120}
   - {fileID: 509740347}
   - {fileID: 1756182052}
-  - {fileID: 1031730653}
-  - {fileID: 1401794887}
-  - {fileID: 869285758}
+  - {fileID: 368323434}
   m_Father: {fileID: 0}
   m_LocalEulerAnglesHint: {x: 0, y: 0, z: 0}
   m_AnchorMin: {x: 0, y: 0}
@@ -11509,3 +11647,4 @@ SceneRoots:
   - {fileID: 677101666}
   - {fileID: 1794262620}
   - {fileID: 2070047294}
+  - {fileID: 1627496964}

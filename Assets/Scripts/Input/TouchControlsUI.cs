@@ -36,7 +36,12 @@ public class TouchControlsUI : MonoBehaviour
     {
         if (Application.isMobilePlatform) return true;
 
+#if UNITY_EDITOR
+        // En el Editor solo activar si el desarrollador lo fuerza o es un dispositivo remoto
+        return false;
+#else
         return Touchscreen.current != null;
+#endif
     }
 
     private void Start()

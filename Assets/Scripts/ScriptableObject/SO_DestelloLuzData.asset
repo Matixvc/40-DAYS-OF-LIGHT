@@ -15,5 +15,5 @@ MonoBehaviour:
   weaponName: Destello de Luz
   damage: 22
   attackRange: 4
-  attackInterval: 0.7
+  attackInterval: 1
   flashColor: {r: 1, g: 0.94497824, b: 0.57924527, a: 0.078431375}
