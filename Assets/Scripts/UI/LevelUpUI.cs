@@ -1,8 +1,12 @@
+using System;
 using System.Collections;
 using System.Collections.Generic;
 using UnityEngine;
 using UnityEngine.UI;
 using TMPro;
+
+// System.Random también existe: el alias evita la ambigüedad CS0104.
+using Random = UnityEngine.Random;
 
 [RequireComponent(typeof(CanvasGroup))]
 public class LevelUpUI : MonoBehaviour
@@ -21,7 +25,17 @@ public class LevelUpUI : MonoBehaviour
     [Header("Audio")]
     [SerializeField] private AudioClip levelUpFanfareSFX; // Asigna LevelUpUI.mp3 aquí
 
+    [Header("Aplicación de Mejoras")]
+    [SerializeField] private UpgradeManager upgradeManager; // Arrastra aquí el objeto con UpgradeManager
+
     private Coroutine activeCoroutine;
+    private bool isVisible;
+
+    /// <summary>True mientras el panel está desplegado o animándose.</summary>
+    public bool IsVisible => isVisible;
+
+    /// <summary>Se lanza cuando el panel termina de cerrarse (una vez por mejora elegida).</summary>
+    public event Action OnPanelClosed;
 
     private void Awake()
     {
@@ -37,10 +51,27 @@ public class LevelUpUI : MonoBehaviour
 
         // Ocultar de inmediato al arrancar sin desactivar el GameObject
         HidePanelInstant();
+        HideAllCards();
+    }
+
+    /// <summary>Limpia las cartas para que no queden datos de una selección anterior.</summary>
+    private void HideAllCards()
+    {
+        if (upgradeCards == null) return;
+
+        for (int i = 0; i < upgradeCards.Length; i++)
+        {
+            if (upgradeCards[i] != null)
+            {
+                upgradeCards[i].HideCard();
+            }
+        }
     }
 
     public void HidePanelInstant()
     {
+        isVisible = false;
+
         if (canvasGroup != null)
         {
             canvasGroup.alpha = 0f;
@@ -59,6 +90,28 @@ public class LevelUpUI : MonoBehaviour
     /// </summary>
     public void ShowPanel()
     {
+        // Evita abrir el panel dos veces si ya está visible
+        if (isVisible) return;
+
+        GameStateController stateController = GameStateController.Instance;
+        if (stateController == null)
+        {
+            Debug.LogError(
+                "[LevelUpUI] No existe GameStateController en la escena: no se puede congelar el juego de forma segura. Añádelo a la escena.",
+                this);
+            return;
+        }
+
+        if (!stateController.RequestLevelUp())
+        {
+            Debug.LogWarning(
+                $"[LevelUpUI] No se puede abrir la selección de mejora (estado actual: {stateController.CurrentState}).",
+                this);
+            return;
+        }
+
+        isVisible = true;
+
         // --- REPRODUCIR FANFARRIA ---
         if (AudioManager.Instance != null && levelUpFanfareSFX != null)
         {
@@ -77,25 +130,61 @@ public class LevelUpUI : MonoBehaviour
 
     private void PopulateUpgradeCards()
     {
-        if (availableUpgrades == null || availableUpgrades.Count == 0 || upgradeCards == null) return;
+        if (upgradeCards == null) return;
 
         // Copiar el pool para no repetir la misma mejora en dos cartas distintas
-        List<UpgradeDataSO> pool = new List<UpgradeDataSO>(availableUpgrades);
+        List<UpgradeDataSO> pool = new List<UpgradeDataSO>();
+        if (availableUpgrades != null)
+        {
+            pool.AddRange(availableUpgrades);
+        }
+
+        int usedCards = 0;
 
         for (int i = 0; i < upgradeCards.Length; i++)
         {
-            if (pool.Count == 0) break;
+            if (upgradeCards[i] == null) continue;
 
-            int randomIndex = Random.Range(0, pool.Count);
+            if (pool.Count == 0)
+            {
+                // Si hay menos mejoras que cartas, ocultamos las sobrantes
+                upgradeCards[i].HideCard();
+                continue;
+            }
+
+            int randomIndex = UnityEngine.Random.Range(0, pool.Count);
             UpgradeDataSO selectedSO = pool[randomIndex];
             pool.RemoveAt(randomIndex); // Evita duplicados en la misma selección
 
-            upgradeCards[i].SetupCard(selectedSO, this);
+            upgradeCards[i].SetupCard(selectedSO, this, upgradeManager);
+            usedCards++;
+        }
+
+        if (usedCards == 0)
+        {
+            Debug.LogError(
+                "[LevelUpUI] No hay mejoras disponibles. Revisa la lista Available Upgrades en el Inspector.",
+                this);
         }
     }
 
     public void HidePanel()
     {
+        if (!isVisible) return;
+
+        isVisible = false;
+
+        // Avisar antes de devolver el control del tiempo: así se pueden encadenar
+        // varias subidas de nivel sin perder ninguna mejora.
+        OnPanelClosed?.Invoke();
+
+        // Devolver el control del tiempo ANTES de animar el cierre.
+        GameStateController stateController = GameStateController.Instance;
+        if (stateController != null)
+        {
+            stateController.RequestCloseLevelUp();
+        }
+
         if (activeCoroutine != null)
         {
             StopCoroutine(activeCoroutine);
@@ -137,15 +226,12 @@ public class LevelUpUI : MonoBehaviour
         if (canvasGroup != null) canvasGroup.alpha = 1f;
         if (panelRect != null) panelRect.localScale = targetScale;
 
-        // Congelar el tiempo tras desplegar
-        Time.timeScale = 0f;
+        // El tiempo ya está congelado por GameStateController (estado LevelUpSelection).
     }
 
     private IEnumerator AnimateHide()
     {
-        // Reanudar el tiempo al iniciar el cierre
-        Time.timeScale = 1f;
-
+        // El tiempo lo reanuda GameStateController al salir de LevelUpSelection.
         if (canvasGroup != null)
         {
             canvasGroup.interactable = false;

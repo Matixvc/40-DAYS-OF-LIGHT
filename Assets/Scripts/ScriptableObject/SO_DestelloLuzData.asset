@@ -13,7 +13,7 @@ MonoBehaviour:
   m_Name: SO_DestelloLuzData
   m_EditorClassIdentifier: Assembly-CSharp::WeaponDataSO
   weaponName: Destello de Luz
-  damage: 20
-  attackRange: 3.5
-  attackInterval: 3
+  damage: 22
+  attackRange: 4
+  attackInterval: 0.7
   flashColor: {r: 1, g: 0.94497824, b: 0.57924527, a: 0.078431375}

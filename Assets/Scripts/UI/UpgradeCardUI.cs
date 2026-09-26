@@ -2,6 +2,11 @@ using UnityEngine;
 using UnityEngine.UI;
 using TMPro;
 
+/// <summary>
+/// Una carta del panel de subida de nivel.
+/// No conoce estadísticas ni ScriptableObjects de configuración: delega siempre
+/// en <see cref="UpgradeManager"/> y avisa a <see cref="LevelUpUI"/> para cerrarse.
+/// </summary>
 public class UpgradeCardUI : MonoBehaviour
 {
     [Header("Referencias UI de la Carta")]
@@ -11,63 +16,103 @@ public class UpgradeCardUI : MonoBehaviour
     [SerializeField] private Button selectButton;
 
     [Header("Audio")]
-    [SerializeField] private AudioClip cardClickSFX; // Asigna LevelUpButton.mp3 o ImapactEnemy.mp3 aquí
+    [SerializeField] private AudioClip cardClickSFX; // Asigna LevelUpButton.mp3 o ImpactEnemy.mp3 aquí
 
     private UpgradeDataSO currentData;
     private LevelUpUI mainUI;
+    private UpgradeManager upgradeManager;
+    private bool alreadyApplied;
 
-    public void SetupCard(UpgradeDataSO data, LevelUpUI ui)
+    public UpgradeDataSO CurrentData => currentData;
+
+    /// <summary>
+    /// Rellena la carta con una mejora concreta y prepara su botón.
+    /// </summary>
+    public void SetupCard(UpgradeDataSO data, LevelUpUI ui, UpgradeManager manager)
     {
         currentData = data;
         mainUI = ui;
+        upgradeManager = manager;
+        alreadyApplied = false;
 
-        // Usamos los nombres de variables de tu UpgradeDataSO
+        gameObject.SetActive(true);
+
         if (titleText != null) titleText.text = data.upgradeName;
         if (descriptionText != null) descriptionText.text = data.description;
-        if (iconImage != null && data.icon != null) iconImage.sprite = data.icon;
+
+        if (iconImage != null)
+        {
+            iconImage.sprite = data.icon;
+            iconImage.enabled = data.icon != null;
+        }
 
         if (selectButton != null)
         {
+            selectButton.interactable = true;
             selectButton.onClick.RemoveAllListeners();
             selectButton.onClick.AddListener(OnSelectUpgrade);
         }
     }
 
+    /// <summary>
+    /// Desactiva la carta y limpia su estado (para cuando hay menos mejoras que cartas).
+    /// </summary>
+    public void HideCard()
+    {
+        currentData = null;
+        alreadyApplied = false;
+
+        if (selectButton != null)
+        {
+            selectButton.onClick.RemoveAllListeners();
+        }
+
+        gameObject.SetActive(false);
+    }
+
     private void OnSelectUpgrade()
     {
-        if (currentData == null) return;
+        // Bloquea dobles clics accidentales
+        if (alreadyApplied) return;
+        alreadyApplied = true;
 
-        // --- REPRODUCIR SONIDO DE CLIC ---
+        if (selectButton != null)
+        {
+            selectButton.interactable = false;
+        }
+
         if (AudioManager.Instance != null && cardClickSFX != null)
         {
             AudioManager.Instance.PlaySFX(cardClickSFX, 0.9f, 0.02f);
         }
 
-        // Aplicar el efecto de la mejora
-        PlayerLevelSystem player = FindAnyObjectByType<PlayerLevelSystem>();
-        if (player != null)
+        if (currentData != null)
         {
-            switch (currentData.upgradeType)
+            if (upgradeManager != null)
             {
-                case UpgradeType.IncreaseDamage:
-                    Debug.Log($"<color=green>+ Daño incrementado en {currentData.value}</color>");
-                    break;
-                case UpgradeType.IncreaseRange:
-                    Debug.Log($"<color=green>+ Rango incrementado en {currentData.value}</color>");
-                    break;
-                case UpgradeType.IncreaseMoveSpeed:
-                    Debug.Log($"<color=green>+ Velocidad incrementada en {currentData.value}</color>");
-                    break;
-                case UpgradeType.HealPlayer:
-                    HealthComponent health = player.GetComponent<HealthComponent>();
-                    if (health != null) health.Heal(currentData.value);
-                    break;
+                upgradeManager.ApplyUpgrade(currentData);
+            }
+            else
+            {
+                Debug.LogError(
+                    "[UpgradeCardUI] No hay UpgradeManager asignado. Revisa el campo del LevelUpUI en el Inspector.",
+                    this);
             }
         }
 
+        // Cerrar siempre el panel: dejarlo abierto congelaría la partida.
         if (mainUI != null)
         {
             mainUI.HidePanel();
+        }
+    }
+
+    private void OnDisable()
+    {
+        // Deja la carta lista para reutilizarse la próxima vez que aparezca.
+        if (selectButton != null)
+        {
+            selectButton.interactable = true;
         }
     }
 }

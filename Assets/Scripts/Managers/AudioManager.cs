@@ -25,19 +25,33 @@ public class AudioManager : MonoBehaviour
     [SerializeField] private float minSoundInterval = 0.04f;
     private Dictionary<AudioClip, float> lastPlayTimes = new Dictionary<AudioClip, float>();
 
+    [SerializeField] private float defaultMusicVolume = 0.25f;
     private void Awake()
     {
-        if (Instance == null)
-        {
-            Instance = this;
-            DontDestroyOnLoad(gameObject);
-            InitializePool();
-            InitializeMusic();
-        }
-        else
+        if (Instance != null)
         {
             Destroy(gameObject);
+            return;
         }
+
+        Instance = this;
+
+        // DontDestroyOnLoad solo funciona con GameObjects RAÍZ. Si el AudioManager está anidado
+        // (por ejemplo dentro de "Managers"), Unity emite el aviso "DontDestroyOnLoad only works
+        // for root GameObjects". Para poder persistir sin ese aviso, lo movemos a la raíz.
+        if (transform.parent != null)
+        {
+            Debug.Log(
+                "[AudioManager] Estaba anidado en la jerarquía: se mueve a la raíz para poder persistir entre escenas. " +
+                "Recomendado: sácalo a la raíz en la escena para que no haga falta en runtime.",
+                this);
+
+            transform.SetParent(null, true);
+        }
+
+        DontDestroyOnLoad(gameObject);
+        InitializePool();
+        InitializeMusic();
     }
 
     private void Start()
@@ -99,7 +113,7 @@ public class AudioManager : MonoBehaviour
             if (currentClip != null)
             {
                 musicSource.clip = currentClip;
-                musicSource.volume = 0.5f; // Ajusta el volumen general de la música aquí
+                musicSource.volume = defaultMusicVolume; // Ajusta el volumen general de la música aquí
                 musicSource.Play();
 
                 // Esperar exactamente la duración de la canción actual

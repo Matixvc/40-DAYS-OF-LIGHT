@@ -12,10 +12,10 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: ce9ef807b33ce5f4ebb7d984faaf824e, type: 3}
   m_Name: SO_ImpData
   m_EditorClassIdentifier: Assembly-CSharp::EnemyDataSO
-  maxHealth: 30
+  maxHealth: 40
   moveSpeed: 3.5
   damage: 10
   xpReward: 15
   attackRange: 1.8
-  attackCooldown: 1
-  attackHitRadius: 2
+  attackCooldown: 1.5
+  attackHitRadius: 1.2

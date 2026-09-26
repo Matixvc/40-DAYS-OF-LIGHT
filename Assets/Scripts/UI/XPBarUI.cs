@@ -33,11 +33,8 @@ public class XPBarUI : MonoBehaviour
             playerLevelSystem.OnXPChanged += UpdateXPBar;
             playerLevelSystem.OnLevelUp += HandleLevelUp;
 
-            // Inicializar la barra con los valores actuales
-            if (playerLevelSystem.Data != null)
-            {
-                UpdateXPBar(playerLevelSystem.Data.currentXP, playerLevelSystem.Data.GetXPToNextLevel());
-            }
+            // Inicializar la barra con los valores de runtime (el SO ya no guarda progreso)
+            UpdateXPBar(playerLevelSystem.CurrentXP, playerLevelSystem.XPToNextLevel);
         }
     }
 

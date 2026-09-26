@@ -13,7 +13,7 @@ MonoBehaviour:
   m_Name: SO_Upgrade_Heal
   m_EditorClassIdentifier: Assembly-CSharp::UpgradeDataSO
   upgradeName: Curacion
-  description: Resatura 30 de Vida
+  description: Restaura un 30% de la Vida
   icon: {fileID: 0}
   upgradeType: 4
-  value: 0.2
+  value: 0.3

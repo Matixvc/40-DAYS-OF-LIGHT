@@ -16,23 +16,21 @@ public class CharacterDataSO : ScriptableObject
     public float rotationSpeed = 10f;
     public float pickupRadius = 3f;
 
-    [Header("Progreso de Nivel")]
-    public int currentLevel = 1;
-    public float currentXP = 0f;
+    [Header("Curva de Progresión (solo configuración)")]
+    [Tooltip("XP necesaria para pasar del nivel 1 al 2.")]
     public float baseXPToNextLevel = 50f;
+    [Tooltip("Multiplicador de XP por nivel (1.25 = +25% por nivel).")]
     public float xpMultiplier = 1.25f;
 
-    public float GetXPToNextLevel()
+    /// <summary>
+    /// XP necesaria para superar el nivel indicado (1 = primer ascenso).
+    /// Es una función pura: este asset NO guarda progreso de partida.
+    /// </summary>
+    public float GetXPToNextLevel(int level)
     {
-        return Mathf.Round(baseXPToNextLevel * Mathf.Pow(xpMultiplier, currentLevel - 1));
-    }
-
-    // --- BOTÓN MANUAL EN EL INSPECTOR ---
-    [ContextMenu("Resetear a Valores Base")]
-    public void ResetStats()
-    {
-        currentLevel = 1;
-        currentXP = 0f;
-        Debug.Log($"<color=cyan>[SO] {name} reseteado: Nivel 1, 0 XP.</color>");
+        int safeLevel = Mathf.Max(1, level);
+        float baseValue = Mathf.Max(1f, baseXPToNextLevel);
+        float multiplier = Mathf.Max(0.1f, xpMultiplier);
+        return Mathf.Max(1f, Mathf.Round(baseValue * Mathf.Pow(multiplier, safeLevel - 1)));
     }
 }

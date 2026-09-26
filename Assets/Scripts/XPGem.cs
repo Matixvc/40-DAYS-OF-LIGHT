@@ -1,10 +1,14 @@
 using UnityEngine;
 
-public class XPGem : MonoBehaviour
+public class XPGem : MonoBehaviour, IPooledObject
 {
     [Header("Configuración de XP")]
     [SerializeField] private float xpAmount = 15f;
     [SerializeField] private float moveSpeed = 12f;
+    [Tooltip("Radio en el que la gema empieza a ser atraída por el jugador.")]
+    [SerializeField] private float magnetRadius = 3.5f;
+    [Tooltip("Distancia a la que se recoge la gema.")]
+    [SerializeField] private float collectRadius = 0.8f;
 
     [Header("Audio")]
     [SerializeField] private AudioClip gemPickupSFX; // Arrastrar GetXP.mp3 aqui
@@ -15,6 +19,21 @@ public class XPGem : MonoBehaviour
     public void SetXPValue(float amount)
     {
         xpAmount = amount;
+    }
+
+    // ======================================================================
+    // RECICLAJE (OBJECT POOLING)
+    // ======================================================================
+
+    public void OnPoolSpawned()
+    {
+        // Estado limpio en cada reutilización desde el pool.
+        isMagnetized = false;
+    }
+
+    public void OnPoolDespawned()
+    {
+        isMagnetized = false;
     }
 
     private void Update()
@@ -31,7 +50,7 @@ public class XPGem : MonoBehaviour
 
         float distance = Vector3.Distance(transform.position, playerTransform.position);
         
-        if (distance <= 3.5f)
+        if (distance <= magnetRadius)
         {
             isMagnetized = true;
         }
@@ -40,7 +59,7 @@ public class XPGem : MonoBehaviour
         {
             transform.position = Vector3.MoveTowards(transform.position, playerTransform.position + Vector3.up * 0.5f, moveSpeed * Time.deltaTime);
 
-            if (distance <= 0.8f)
+            if (distance <= collectRadius)
             {
                 Collect(playerTransform.GetComponent<PlayerLevelSystem>());
             }
@@ -58,6 +77,15 @@ public class XPGem : MonoBehaviour
                 AudioManager.Instance.PlaySFX(gemPickupSFX, 0.8f, 0.12f);
             }
         }
+        // Reciclar la gema en lugar de destruirla: cero GC durante el gameplay.
+        ObjectPoolManager pool = ObjectPoolManager.Instance;
+
+        if (pool != null && pool.IsPooled(gameObject))
+        {
+            pool.Despawn(gameObject);
+            return;
+        }
+
         Destroy(gameObject);
     } 
 }

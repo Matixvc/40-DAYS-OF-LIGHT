@@ -16,6 +16,10 @@ public class GameManager : MonoBehaviour
     [Header("Referencias del Jugador")]
     [SerializeField] private PlayerLevelSystem playerLevelSystem;
 
+    [Header("Input (Input System)")]
+    [Tooltip("Lector de input del jugador. Si se deja vacío se resuelve automáticamente.")]
+    [SerializeField] private PlayerInputReader inputReader;
+
     private bool isGameOver = false;
 
     private void Awake()
@@ -32,25 +36,75 @@ public class GameManager : MonoBehaviour
 
     private void Start()
     {
-    // Garantizar que la UI de Game Over esté apagada al iniciar la partida
-    if (gameOverUI != null)
-    {
-        gameOverUI.SetActive(false);
-    }
-
-    if (gameOverCanvasGroup != null)
-    {
-        gameOverCanvasGroup.alpha = 0f;
-    }
-    }
-
-    private void Update()
-    {
-        // Permitir reiniciar presionando R cuando el juego termine
-        if (isGameOver && Input.GetKeyDown(KeyCode.R))
+        if (GameStateController.Instance != null)
         {
-            RestartGame();
+            GameStateController.Instance.OnStateChanged += HandleStateChanged;
         }
+        else
+        {
+            Debug.LogError(
+                "[GameManager] Falta GameStateController en la escena. El fin de partida no se congelará correctamente.",
+                this);
+        }
+
+        ResolveInputReader();
+
+        // Garantizar que la UI de Game Over esté apagada al iniciar la partida
+        if (gameOverUI != null)
+        {
+            gameOverUI.SetActive(false);
+        }
+
+        if (gameOverCanvasGroup != null)
+        {
+            gameOverCanvasGroup.alpha = 0f;
+        }
+    }
+
+    private void OnDestroy()
+    {
+        if (GameStateController.Instance != null)
+        {
+            GameStateController.Instance.OnStateChanged -= HandleStateChanged;
+        }
+
+        if (inputReader != null)
+        {
+            inputReader.RestartPressed -= HandleRestartPressed;
+        }
+
+        if (Instance == this)
+        {
+            Instance = null;
+        }
+    }
+
+    private void ResolveInputReader()
+    {
+        if (inputReader == null)
+        {
+            inputReader = PlayerInputReader.Instance;
+        }
+
+        if (inputReader == null)
+        {
+            Debug.LogWarning(
+                "[GameManager] No se encontró PlayerInputReader: no se podrá reiniciar con teclado ni mando desde el Game Over.",
+                this);
+            return;
+        }
+
+        inputReader.RestartPressed -= HandleRestartPressed;
+        inputReader.RestartPressed += HandleRestartPressed;
+    }
+
+    /// <summary>Reinicio disparado por el Input System (R o botón del mando).</summary>
+    private void HandleRestartPressed()
+    {
+        // Solo se reinicia desde la pantalla de Game Over.
+        if (!isGameOver) return;
+
+        RestartGame();
     }
 
     public void TriggerGameOver()
@@ -58,21 +112,58 @@ public class GameManager : MonoBehaviour
         if (isGameOver) return;
 
         isGameOver = true;
-        Time.timeScale = 0f; // Pausar el combate y movimiento
 
-        // Actualizar estadísticas de nivel
-        if (gameOverStatsText != null && playerLevelSystem != null && playerLevelSystem.Data != null)
+        // Preparar el texto ANTES de cambiar de estado (la UI se muestra al entrar en GameOver).
+        UpdateGameOverStatsText();
+
+        GameStateController stateController = GameStateController.Instance;
+
+        if (stateController == null)
         {
-            gameOverStatsText.text = $"Sobreviviste hasta el <color=#FFCC00>Nivel {playerLevelSystem.Data.currentLevel}</color>";
+            // Respaldo de emergencia: sin controlador el tiempo no se congela, pero se avisa claramente.
+            Debug.LogError(
+                "[GameManager] No hay GameStateController en la escena: el tiempo NO se congelará al morir.",
+                this);
+            ShowGameOverUI();
         }
-
-        if (gameOverUI != null)
+        else if (!stateController.RequestGameOver())
         {
-            gameOverUI.SetActive(true);
-            StartCoroutine(AnimateGameOverUI());
+            Debug.LogWarning(
+                $"[GameManager] La transición a GameOver fue rechazada (estado actual: {stateController.CurrentState}).",
+                this);
         }
 
         Debug.Log("<color=red>[GameManager] Fin de la partida. Presiona R o el botón para reintentar.</color>");
+    }
+
+    private void UpdateGameOverStatsText()
+    {
+        if (gameOverStatsText != null && playerLevelSystem != null)
+        {
+            gameOverStatsText.text = $"Sobreviviste hasta el <color=#FFCC00>Nivel {playerLevelSystem.CurrentLevel}</color>";
+        }
+    }
+
+    /// <summary>La UI de Game Over se muestra cuando el estado global entra en GameOver.</summary>
+    private void HandleStateChanged(GameState previous, GameState current)
+    {
+        if (current == GameState.GameOver)
+        {
+            ShowGameOverUI();
+        }
+    }
+
+    private void ShowGameOverUI()
+    {
+        if (gameOverUI == null) return;
+
+        if (!gameOverUI.activeSelf)
+        {
+            gameOverUI.SetActive(true);
+        }
+
+        StopAllCoroutines();
+        StartCoroutine(AnimateGameOverUI());
     }
 
     private IEnumerator AnimateGameOverUI()
@@ -116,7 +207,15 @@ public class GameManager : MonoBehaviour
 
     public void RestartGame()
     {
-        Time.timeScale = 1f; // Restaurar la velocidad del tiempo antes de reiniciar
+        isGameOver = false;
+
+        // Devolver el control del tiempo al estado de juego antes de recargar la escena.
+        GameStateController stateController = GameStateController.Instance;
+        if (stateController != null)
+        {
+            stateController.RequestRestart();
+        }
+
         SceneManager.LoadScene(SceneManager.GetActiveScene().buildIndex);
     }
 }

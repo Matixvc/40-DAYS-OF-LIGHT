@@ -8,36 +8,49 @@ public class EnemySpawner : MonoBehaviour
     [SerializeField] private Transform playerTransform;
 
     [Header("Parámetros Iniciales de Spawn")]
-    [SerializeField] private float initialSpawnInterval = 2f;  // Intervalo con el que empieza
-    [SerializeField] private float minSpawnInterval = 0.3f;     // Límite de velocidad de spawn
+    [Tooltip("Intervalo entre spawns en el Día 1, en segundos.")]
+    [SerializeField] private float initialSpawnInterval = 1.8f;
+    [Tooltip("Intervalo mínimo alcanzable: límite de densidad de spawn.")]
+    [SerializeField] private float minSpawnInterval = 0.5f;
     [SerializeField] private float minSpawnDistance = 10f;     // Distancia mínima al jugador
     [SerializeField] private float maxSpawnDistance = 15f;     // Distancia máxima al jugador
-    [SerializeField] private int initialMaxEnemies = 20;        // Límite de enemigos inicial
-    [SerializeField] private int absoluteMaxEnemies = 100;     // Límite máximo global
+    [Tooltip("Enemigos simultáneos permitidos en el Día 1.")]
+    [SerializeField] private int initialMaxEnemies = 22;
+    [Tooltip("Tope absoluto de enemigos simultáneos, por rendimiento.")]
+    [SerializeField] private int absoluteMaxEnemies = 100;
 
-    [Header("Progresión y Dificultad")]
-    [SerializeField] private float timePerDifficultyLevel = 15f; // Cada cuántos segundos sube el nivel
-    [SerializeField] private float intervalDecreaseRate = 0.15f; // Cuánto se reduce el tiempo por nivel
-    [SerializeField] private int maxEnemiesIncreasePerLevel = 5;  // Cuántos enemigos más se permiten por nivel
+    [Header("Ritmo de Spawn por Ronda")]
+    [Tooltip("Cuánto se acorta el intervalo entre spawns por cada día.")]
+    [SerializeField] private float intervalDecreaseRate = 0.045f;
+    [Tooltip("Cuántos enemigos simultáneos más se permiten por cada día.")]
+    [SerializeField] private int maxEnemiesIncreasePerLevel = 3;
+
+    [Header("Spawn en Ráfaga")]
+    [Tooltip("Enemigos generados por ciclo al inicio de la partida.")]
+    [SerializeField] private int earlyBurstSize = 1;
+    [Tooltip("Ronda a partir de la cual las ráfagas crecen.")]
+    [SerializeField] private int burstRoundsStart = 10;
+    [Tooltip("Enemigos generados por ciclo en rondas avanzadas (respetando el límite de enemigos).")]
+    [SerializeField] private int lateBurstSize = 3;
+
+    [Header("Depuración")]
+    [SerializeField] private bool logSpawnScaling = true;
 
     private float currentSpawnInterval;
     private int currentMaxEnemies;
     private float nextSpawnTime;
-    private float gameTimer;
-    private int currentWave = 1;
+    private int currentRound = 1;
+    private bool spawningEnabled = true;
+    private EnemyScalingProfile scalingProfile = EnemyScalingProfile.One;
 
     private void Start()
     {
-        // 1. REINICIAR TIEMPO Y OLEADA INICIAL
-        gameTimer = 0f;
-        currentWave = 1;
-
-        // 2. REINICIAR DIFICULTAD A LOS VALORES BASE
+        // Ritmo base: el RunDirector lo reajusta en cuanto arranca la primera ronda.
         currentSpawnInterval = initialSpawnInterval;
         currentMaxEnemies = initialMaxEnemies;
         nextSpawnTime = Time.time + currentSpawnInterval;
 
-        // 3. Búsqueda automática del jugador si no se asignó en el Inspector
+        // Búsqueda automática del jugador si no se asignó en el Inspector
         if (playerTransform == null)
         {
             PlayerController player = FindAnyObjectByType<PlayerController>();
@@ -50,46 +63,40 @@ public class EnemySpawner : MonoBehaviour
 
     private void Update()
     {
+        if (!spawningEnabled) return;
         if (playerTransform == null || enemyPrefab == null) return;
 
-        // Contador de tiempo y progresión de dificultad
-        gameTimer += Time.deltaTime;
-        UpdateDifficulty();
+        // El spawn solo avanza durante la partida; el tiempo ya está congelado en pausa, nivel y final.
+        GameStateController stateController = GameStateController.Instance;
+        if (stateController != null && !stateController.IsPlaying) return;
 
-        // Spawn continuo según el intervalo actual
+        // Spawn continuo según el intervalo actual de la ronda
         if (Time.time >= nextSpawnTime)
         {
-            int currentEnemyCount = GameObject.FindGameObjectsWithTag("Enemy").Length;
+            int aliveEnemies = GameObject.FindGameObjectsWithTag("Enemy").Length;
+            int freeSlots = currentMaxEnemies - aliveEnemies;
 
-            if (currentEnemyCount < currentMaxEnemies)
+            // Spawn en ráfaga: en rondas avanzadas se generan varios enemigos por ciclo si hay hueco.
+            int burstSize = currentRound >= burstRoundsStart ? lateBurstSize : earlyBurstSize;
+            int spawnAttempts = Mathf.Clamp(Mathf.Min(freeSlots, burstSize), 0, Mathf.Max(0, burstSize));
+
+            for (int i = 0; i < spawnAttempts; i++)
             {
-                TrySpawnEnemyOnNavMesh();
+                if (!TrySpawnEnemyOnNavMesh())
+                {
+                    break; // Sin posición válida sobre el NavMesh en este ciclo
+                }
             }
 
             nextSpawnTime = Time.time + currentSpawnInterval;
         }
     }
 
-    private void UpdateDifficulty()
-    {
-        // Calcular en qué ronda/nivel de dificultad vamos según el tiempo transcurrido
-        int calculatedWave = Mathf.FloorToInt(gameTimer / timePerDifficultyLevel) + 1;
-
-        if (calculatedWave > currentWave)
-        {
-            currentWave = calculatedWave;
-
-            // Aumentar la velocidad de spawn
-            currentSpawnInterval = Mathf.Max(minSpawnInterval, currentSpawnInterval - intervalDecreaseRate);
-
-            // Aumentar la capacidad máxima de enemigos en pantalla
-            currentMaxEnemies = Mathf.Min(absoluteMaxEnemies, currentMaxEnemies + maxEnemiesIncreasePerLevel);
-
-            Debug.Log($"<color=orange>¡DIFICULTAD AUMENTADA! Oleada {currentWave} | Intervalo: {currentSpawnInterval:F2}s | Máx Enemigos: {currentMaxEnemies}</color>");
-        }
-    }
-
-    private void TrySpawnEnemyOnNavMesh()
+    /// <summary>
+    /// Busca una posición válida sobre el NavMesh alrededor del jugador y saca el enemigo del pool.
+    /// Devuelve null si no encontró posición válida o el pool alcanzó su límite.
+    /// </summary>
+    private GameObject InstantiateEnemyNearPlayer()
     {
         for (int i = 0; i < 5; i++)
         {
@@ -99,32 +106,247 @@ public class EnemySpawner : MonoBehaviour
 
             if (NavMesh.SamplePosition(randomPoint, out NavMeshHit hit, 3.0f, NavMesh.AllAreas))
             {
-                GameObject newEnemy = Instantiate(enemyPrefab, hit.position, Quaternion.identity);
-
-                // --- MULTIPLICADORES DE PROGRESIÓN ---
-                // Oleada 1 = 1.0x | Oleada 5 = 1.32x velocidad, +40% vida/daño
-                float speedMultiplier = 1.0f + ((currentWave - 1) * 0.08f);
-                float statMultiplier = 1.0f + ((currentWave - 1) * 0.10f); // +10% de salud/daño por oleada
-
-                // Aplicar velocidad al IA del enemigo
-                EnemyAI enemyAI = newEnemy.GetComponent<EnemyAI>();
-                if (enemyAI != null)
-                {
-                    enemyAI.SetDifficultyMultiplier(speedMultiplier);
-                }
-
-                // Ajustar vida máxima del enemigo según la oleada
-                HealthComponent enemyHealth = newEnemy.GetComponent<HealthComponent>();
-                if (enemyHealth != null && enemyHealth.MaxHealth > 0)
-                {
-                    float scaledHealth = enemyHealth.MaxHealth * statMultiplier;
-                    // Inicia con la vida escalada
-                    enemyHealth.Heal(scaledHealth); 
-                }
-
-                return;
+                return SpawnFromPoolOrInstantiate(enemyPrefab, hit.position);
             }
         }
+
+        return null;
+    }
+
+    /// <summary>
+    /// Recicla la instancia desde el ObjectPoolManager (cero GC durante el gameplay).
+    /// Si no hay pool en la escena, usa Instantiate como respaldo para no romper el flujo.
+    /// </summary>
+    private static GameObject SpawnFromPoolOrInstantiate(GameObject prefab, Vector3 position)
+    {
+        ObjectPoolManager pool = ObjectPoolManager.Instance;
+
+        if (pool != null)
+        {
+            return pool.Spawn(prefab, position, Quaternion.identity);
+        }
+
+        return Instantiate(prefab, position, Quaternion.identity);
+    }
+
+    /// <summary>Intenta crear un enemigo. Devuelve false si no encontró posición válida sobre el NavMesh.</summary>
+    private bool TrySpawnEnemyOnNavMesh()
+    {
+        GameObject newEnemy = InstantiateEnemyNearPlayer();
+
+        if (newEnemy == null) return false;
+
+        ConfigureSpawnedEnemy(newEnemy);
+        return true;
+    }
+
+    // ======================================================================
+    // API PARA EL RUNDIRECTOR
+    // ======================================================================
+
+    public bool SpawningEnabled => spawningEnabled;
+    public int CurrentRound => currentRound;
+    public float CurrentSpawnInterval => currentSpawnInterval;
+    public int CurrentMaxEnemies => currentMaxEnemies;
+
+    /// <summary>
+    /// Ajusta el ritmo de spawn a la ronda indicada y guarda el escalado de estadísticas
+    /// que se aplicará a cada enemigo nuevo de esa ronda.
+    /// </summary>
+    public void ApplyRoundSettings(
+        int roundNumber,
+        EnemyScalingProfile profile,
+        float intervalMultiplier = 1f,
+        float maxEnemiesMultiplier = 1f)
+    {
+        currentRound = Mathf.Max(1, roundNumber);
+        scalingProfile = profile;
+
+        int steps = currentRound - 1;
+        float baseInterval = initialSpawnInterval - (steps * intervalDecreaseRate);
+        float baseMaxEnemies = initialMaxEnemies + (steps * maxEnemiesIncreasePerLevel);
+
+        // Los multiplicadores permiten bajar el ritmo durante las Noches (con jefe)
+        // sin llegar a detener nunca el spawn de enemigos comunes.
+        currentSpawnInterval = Mathf.Max(minSpawnInterval, baseInterval * Mathf.Max(0.1f, intervalMultiplier));
+        currentMaxEnemies = Mathf.Clamp(
+            Mathf.RoundToInt(baseMaxEnemies * Mathf.Max(0.1f, maxEnemiesMultiplier)),
+            1,
+            absoluteMaxEnemies);
+
+        if (logSpawnScaling)
+        {
+            Debug.Log(
+                $"<color=orange>[EnemySpawner] Ronda {currentRound} configurada | Intervalo: {currentSpawnInterval:0.00}s | " +
+                $"Máx enemigos: {currentMaxEnemies} | Vida x{profile.healthMultiplier:0.00} | " +
+                $"Daño x{profile.damageMultiplier:0.00} | Velocidad x{profile.speedMultiplier:0.00}</color>",
+                this);
+        }
+    }
+
+    /// <summary>Activa o detiene el spawn regular (las noches con jefe lo detienen).</summary>
+    public void SetSpawningEnabled(bool value)
+    {
+        spawningEnabled = value;
+
+        if (value)
+        {
+            // Evita una ráfaga de spawns al reanudar.
+            nextSpawnTime = Time.time + currentSpawnInterval;
+        }
+
+        if (logSpawnScaling)
+        {
+            Debug.Log($"<color=orange>[EnemySpawner] Spawn {(value ? "ACTIVADO" : "DETENIDO")} (ronda {currentRound}).</color>", this);
+        }
+    }
+
+    /// <summary>
+    /// Genera un Jefe de Noche: misma base que el enemigo normal pero escalado en
+    /// estadísticas, tamaño y recompensa. No modifica ningún ScriptableObject.
+    /// </summary>
+    public GameObject SpawnBoss(
+        EnemyScalingProfile profile,
+        float scaleMultiplier,
+        float xpMultiplier,
+        string displayName)
+    {
+        if (enemyPrefab == null || playerTransform == null)
+        {
+            Debug.LogError("[EnemySpawner] No se puede generar el jefe: falta el prefab o el jugador.", this);
+            return null;
+        }
+
+        GameObject boss = InstantiateEnemyNearPlayer();
+
+        if (boss == null)
+        {
+            Debug.LogWarning("[EnemySpawner] No se encontró una posición válida sobre el NavMesh para el jefe.", this);
+            return null;
+        }
+
+        boss.name = string.IsNullOrWhiteSpace(displayName) ? $"{enemyPrefab.name}_Boss" : displayName;
+
+        // Escalado visual
+        float safeScale = Mathf.Max(1f, scaleMultiplier);
+        boss.transform.localScale *= safeScale;
+
+        HealthComponent bossHealth = boss.GetComponentInChildren<HealthComponent>(true);
+        EnemyAI bossAI = boss.GetComponentInChildren<EnemyAI>(true);
+
+        if (bossHealth != null)
+        {
+            bossHealth.ApplyHealthScaling(profile.healthMultiplier);
+            bossHealth.MultiplyXpReward(xpMultiplier);
+        }
+        else
+        {
+            Debug.LogError("[EnemySpawner] El prefab del jefe no tiene HealthComponent.", boss);
+        }
+
+        if (bossAI != null)
+        {
+            bossAI.SetTarget(playerTransform);
+            bossAI.ApplySpawnScaling(profile.damageMultiplier, profile.speedMultiplier);
+            bossAI.MarkAsBoss();
+        }
+        else
+        {
+            Debug.LogError("[EnemySpawner] El prefab del jefe no tiene EnemyAI.", boss);
+        }
+
+        if (logSpawnScaling)
+        {
+            float bossHealthValue = bossHealth != null ? bossHealth.MaxHealth : 0f;
+            float bossDamageValue = bossAI != null ? bossAI.CurrentDamage : 0f;
+
+            Debug.Log(
+                $"<color=magenta>[EnemySpawner] JEFE '{boss.name}' | Vida {bossHealthValue:0} (x{profile.healthMultiplier:0.00}) | " +
+                $"Daño {bossDamageValue:0.0} (x{profile.damageMultiplier:0.00}) | Escala x{safeScale:0.00}</color>",
+                boss);
+        }
+
+        return boss;
+    }
+
+    /// <summary>
+    /// Aplica el escalado de la ronda actual al enemigo recién creado.
+    /// No modifica los ScriptableObjects: escribe en el runtime de la instancia (compatible con pooling).
+    /// </summary>
+    private void ConfigureSpawnedEnemy(GameObject spawnedEnemy)
+    {
+        float healthMultiplier = scalingProfile.healthMultiplier;
+        float damageMultiplier = scalingProfile.damageMultiplier;
+        float speedMultiplier = scalingProfile.speedMultiplier;
+
+        HealthComponent enemyHealth = spawnedEnemy.GetComponentInChildren<HealthComponent>(true);
+        EnemyAI enemyAI = spawnedEnemy.GetComponentInChildren<EnemyAI>(true);
+
+        if (enemyHealth != null)
+        {
+            // Escala desde la vida BASE del enemigo y la deja llena.
+            enemyHealth.ApplyHealthScaling(healthMultiplier);
+        }
+        else
+        {
+            Debug.LogError("[EnemySpawner] El prefab de enemigo no tiene HealthComponent.", spawnedEnemy);
+        }
+
+        if (enemyAI != null)
+        {
+            // Asignar el objetivo evita un FindGameObjectWithTag por enemigo.
+            enemyAI.SetTarget(playerTransform);
+            enemyAI.ApplySpawnScaling(damageMultiplier, speedMultiplier);
+        }
+        else
+        {
+            Debug.LogError("[EnemySpawner] El prefab de enemigo no tiene EnemyAI.", spawnedEnemy);
+        }
+
+        if (logSpawnScaling)
+        {
+            float healthValue = enemyHealth != null ? enemyHealth.MaxHealth : 0f;
+            float damageValue = enemyAI != null ? enemyAI.CurrentDamage : 0f;
+            float speedValue = enemyAI != null ? enemyAI.CurrentMoveSpeed : 0f;
+
+            Debug.Log(
+                $"<color=orange>[EnemySpawner] Spawn escalado (ronda {currentRound}) | " +
+                $"Vida x{healthMultiplier:0.00} = {healthValue:0.0} | " +
+                $"Daño x{damageMultiplier:0.00} = {damageValue:0.0} | " +
+                $"Velocidad x{speedMultiplier:0.00} = {speedValue:0.00}</color>",
+                spawnedEnemy);
+        }
+    }
+
+    /// <summary>
+    /// Aplica el ritmo de spawn recomendado para la curva de 40 días
+    /// (más densidad a medida que avanza la partida, sin saturar el rendimiento).
+    /// Útil porque los campos ya serializados en la escena conservan los valores antiguos.
+    /// </summary>
+    [ContextMenu("Aplicar ritmo de spawn recomendado")]
+    private void ApplyRecommendedPacing()
+    {
+        initialSpawnInterval = 1.8f;
+        minSpawnInterval = 0.4f;
+        initialMaxEnemies = 22;
+        absoluteMaxEnemies = 100;
+        intervalDecreaseRate = 0.045f;
+        maxEnemiesIncreasePerLevel = 3;
+        earlyBurstSize = 1;
+        burstRoundsStart = 10;
+        lateBurstSize = 3;
+
+        if (logSpawnScaling)
+        {
+            Debug.Log(
+                "[EnemySpawner] Ritmo recomendado aplicado: 1.8s → 0.4s, 22 → 100 enemigos y ráfagas de hasta 3 por ciclo. " +
+                "Guarda la escena (Ctrl+S) para conservarlo.",
+                this);
+        }
+
+#if UNITY_EDITOR
+        UnityEditor.EditorUtility.SetDirty(this);
+#endif
     }
 
     private void OnDrawGizmosSelected()

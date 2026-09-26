@@ -19,7 +19,5 @@ MonoBehaviour:
   sprintCooldown: 3
   rotationSpeed: 10
   pickupRadius: 3
-  currentLevel: 1
-  currentXP: 0
   baseXPToNextLevel: 50
   xpMultiplier: 1.25
