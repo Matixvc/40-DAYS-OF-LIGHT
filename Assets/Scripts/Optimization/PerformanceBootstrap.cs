@@ -9,8 +9,10 @@ using UnityEngine;
 public class PerformanceBootstrap : MonoBehaviour
 {
     [Header("Objetivo de FPS")]
-    [SerializeField] private int targetFrameRate = 60;
-    [Tooltip("Desactiva VSync en móvil (necesario para que targetFrameRate se aplique de verdad).")]
+    [Tooltip("Límite de fotogramas por segundo para evitar sobrecarga y GPU Timeout (TDR).")]
+    [SerializeField] private int targetFrameRate = 120;
+    [Tooltip("Desactiva VSync para que targetFrameRate se respete rigurosamente tanto en móvil como en escritorio.")]
+    [SerializeField] private bool disableVSync = true;
     [SerializeField] private bool disableVSyncOnMobile = true;
 
     [Header("Solo móvil")]
@@ -26,18 +28,16 @@ public class PerformanceBootstrap : MonoBehaviour
     {
         bool isMobile = Application.isMobilePlatform;
 
-        if (Application.targetFrameRate != targetFrameRate)
+        // Limita la tasa de fotogramas objetivo a 120 para evitar renderizado descontrolado y colapsos por GPU TDR
+        Application.targetFrameRate = targetFrameRate;
+
+        if (disableVSync || isMobile)
         {
-            Application.targetFrameRate = targetFrameRate;
+            QualitySettings.vSyncCount = 0;
         }
 
         if (isMobile)
         {
-            if (disableVSyncOnMobile)
-            {
-                QualitySettings.vSyncCount = 0;
-            }
-
             if (mobileQualityLevel >= 0 && mobileQualityLevel < QualitySettings.names.Length)
             {
                 QualitySettings.SetQualityLevel(mobileQualityLevel, true);

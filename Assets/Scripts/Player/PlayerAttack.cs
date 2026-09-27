@@ -31,6 +31,9 @@ public class PlayerAttack : MonoBehaviour
     // Reutilizado para no asignar memoria en cada ataque.
     private readonly HashSet<HealthComponent> damagedTargets = new HashSet<HealthComponent>();
 
+    // Buffer estático reutilizable para Physics.OverlapSphereNonAlloc (Cero GC)
+    private static readonly Collider[] hitBuffer = new Collider[128];
+
     private float nextAttackTime;
 
     public WeaponDataSO WeaponData => weaponData;
@@ -151,12 +154,15 @@ public class PlayerAttack : MonoBehaviour
             AudioManager.Instance.PlaySFX(attackPastorSFX, 0.9f, 0.05f);
         }
 
-        Collider[] hitEnemies = Physics.OverlapSphere(transform.position, AttackRange, enemyLayer);
+        int hitCount = Physics.OverlapSphereNonAlloc(transform.position, AttackRange, hitBuffer, enemyLayer);
 
         damagedTargets.Clear();
 
-        foreach (Collider enemyCollider in hitEnemies)
+        for (int i = 0; i < hitCount; i++)
         {
+            Collider enemyCollider = hitBuffer[i];
+            if (enemyCollider == null) continue;
+
             HealthComponent enemyHealth = enemyCollider.GetComponentInParent<HealthComponent>();
             if (enemyHealth == null) continue;
 

@@ -324,6 +324,12 @@ public class ObjectPoolManager : MonoBehaviour
         releaseBuffer.Clear();
     }
 
+    /// <summary>Alias explícito de ReleaseAll para devolver/despawnear todas las instancias activas.</summary>
+    public void DespawnAll() => ReleaseAll();
+
+    /// <summary>Alias explícito para limpiar y devolver todos los pools de la partida.</summary>
+    public void ClearAllPools() => ReleaseAll();
+
     public int GetAvailableCount(GameObject prefab)
     {
         return poolByPrefab.TryGetValue(prefab, out PoolDefinition pool) ? pool.available.Count : 0;

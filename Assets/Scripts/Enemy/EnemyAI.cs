@@ -23,6 +23,25 @@ public class EnemyAI : MonoBehaviour, IPooledObject
     private Transform playerTransform;
     private HealthComponent playerHealth;
 
+    [Header("Optimización de CPU (NavMesh)")]
+    [Tooltip("Ventana MÍNIMA entre recálculos de ruta (segundos). Evita que cada enemigo " +
+             "recalcule su NavMeshPath en cada Update(): con una horda son miles de consultas " +
+             "al NavMesh por segundo y eso se come el frame en CPU.")]
+    [SerializeField] private float pathUpdateIntervalMin = 0.15f;
+    [Tooltip("Ventana MÁXIMA entre recálculos de ruta (segundos). El intervalo real se sortea una " +
+             "vez POR ENEMIGO entre el mínimo y el máximo, así toda la horda nunca recalcula su " +
+             "ruta en el mismo frame (evita picos de CPU).")]
+    [SerializeField] private float pathUpdateIntervalMax = 0.25f;
+    [Tooltip("Distancia mínima (unidades) que debe moverse el jugador para que valga la pena " +
+             "recalcular la ruta, aunque la ventana de tiempo ya haya expirado.")]
+    [SerializeField] private float playerMoveThreshold = 0.5f;
+
+    // Estado del throttling de ruta
+    private float pathUpdateInterval;   // Sorteado por enemigo en [min, max]
+    private float nextPathUpdateTime;   // Momento (Time.time) del próximo recálculo permitido
+    private Vector3 lastPlayerTargetPosition;
+    private bool animatorMovingState;   // Último valor enviado a IsMoving (evita SetBool redundante)
+
     private float lastAttackTime;
     private bool isAttacking;
     private float attackSafetyTimer;
@@ -47,17 +66,10 @@ public class EnemyAI : MonoBehaviour, IPooledObject
     [Range(0f, 1f)]
     [SerializeField] private float attackSpeedSpeedInfluence = 0.5f;
     [Tooltip("Diagnóstico (APAGADO por defecto para dejar la consola de Unity 100% limpia): avisa una vez " +
-             "por instancia si la animación de ataque termina sin invocar ExecuteAttackHit(). Actívalo solo " +
-             "para depurar un clip: el respaldo por tiempo resuelve el golpe y su SFX con precisión (~0.28s), " +
-             "así que con el evento ausente no hay ruido de consola, solo el mecanismo de respaldo.")]
+             "por instancia si la animación de ataque termina sin invocar ExecuteAttackHit(), porque eso " +
+             "significa que al clip le falta el Animation Event y el enemigo NO hará daño. Actívalo solo " +
+             "para depurar el clip.")]
     [SerializeField] private bool logMissingHitEvent = false;
-    [Tooltip("Respaldo del golpe: instante (segundos de ANIMACIÓN) en el que el clip tiene el " +
-             "Animation Event de impacto (AttackEnemy01: 0.38s). Si el evento no llegara, el golpe " +
-             "y su SFX se resuelven aquí para que el ataque nunca quede mudo.")]
-    [SerializeField] private float attackHitFallbackTime = 0.38f;
-    [Tooltip("Margen extra (segundos de animación) que se espera antes de dar el Animation Event " +
-             "por perdido. Evita el doble golpe si el evento real llega ligeramente tarde.")]
-    [SerializeField] private float attackHitFallbackGrace = 0.08f;
 
     [Header("Escalado de Dificultad (runtime)")]
     [Tooltip("Tiempo máximo que puede durar la animación de ataque antes de liberar al enemigo.")]
@@ -83,20 +95,37 @@ public class EnemyAI : MonoBehaviour, IPooledObject
     private static readonly int IsMovingHash = Animator.StringToHash("IsMoving");
     private static readonly int AttackHash = Animator.StringToHash("Attack");
 
-    /// <summary>
-    /// Aviso del respaldo ya emitido: se registra una sola vez por instancia para no inundar la
-    /// consola (la instancia se recicla y el diagnóstico se repetiría en cada aparición).
-    /// </summary>
-    private bool attackHitFallbackLogged;
-
     private void Awake()
     {
         // 1. Obtener componentes ANTES de cualquier llamada externa
         agent = GetComponent<NavMeshAgent>();
         animator = GetComponentInChildren<Animator>();
 
+        // Optimización GPU/CPU: Evita calcular huesos y animaciones si el enemigo está fuera del frustum de la cámara
+        if (animator != null)
+        {
+            animator.cullingMode = AnimatorCullingMode.CullUpdateTransforms;
+        }
+
         // Escala original del prefab: se restaura al reciclar (el jefe la multiplica).
         baseScale = transform.localScale;
+
+        isFrozen = false;
+        isAttacking = false;
+        attackHitResolved = false;
+        if (animator != null) animator.speed = 1f;
+
+        // Cada enemigo recibe su propia ventana de recálculo de ruta (offset aleatorio).
+        RollPathUpdateInterval();
+        nextPathUpdateTime = 0f;
+
+        if (agent != null)
+        {
+            agent.enabled = true;
+            agent.isStopped = false;
+            if (enemyData != null) agent.speed = enemyData.moveSpeed;
+            if (agent.isOnNavMesh) agent.ResetPath();
+        }
     }
 
     private void OnEnable()
@@ -188,6 +217,10 @@ public class EnemyAI : MonoBehaviour, IPooledObject
             else
             {
                 agent.isStopped = false;
+                // Al reanudar la persecución la ruta debe recomputarse YA: ResetPath() la dejó
+                // vacía, así que sin forzar la ventana el enemigo se quedaría quieto hasta
+                // que expirase su throttling (0.15-0.25s de parón visible).
+                nextPathUpdateTime = 0f;
             }
         }
 
@@ -226,12 +259,37 @@ public class EnemyAI : MonoBehaviour, IPooledObject
                 agent.enabled = true;
             }
 
+            agent.isStopped = false;
+            if (enemyData != null)
+            {
+                agent.speed = CurrentMoveSpeed > 0f ? CurrentMoveSpeed : enemyData.moveSpeed;
+            }
+
             if (agent.isOnNavMesh)
             {
-                agent.isStopped = false;
                 agent.velocity = Vector3.zero;
+                agent.ResetPath();
+                // Tras el reseteo la ruta está vacía: se fuerza el recálculo inmediato para que
+                // el enemigo no espere a que expire su ventana de throttling.
+                nextPathUpdateTime = 0f;
+                if (playerTransform != null)
+                {
+                    lastPlayerTargetPosition = playerTransform.position;
+                    agent.SetDestination(playerTransform.position);
+                }
             }
+
+            RollPathUpdateInterval();
+            animatorMovingState = false;
         }
+    }
+
+    /// <summary>
+    /// Descongela explícitamente al enemigo reanudando su IA y navegación.
+    /// </summary>
+    public void Unfreeze()
+    {
+        ResetEnemyState();
     }
 
     /// <summary>
@@ -300,6 +358,13 @@ public class EnemyAI : MonoBehaviour, IPooledObject
             agent.isStopped = false;
             agent.ResetPath();
         }
+
+        // Instancia recién reciclada: la ventana de ruta se re-sortea y se fuerza el primer
+        // recálculo, así el throttling nunca provoca un parón al entrar en escena.
+        RollPathUpdateInterval();
+        nextPathUpdateTime = 0f;
+        lastPlayerTargetPosition = playerTransform != null ? playerTransform.position : transform.position;
+        animatorMovingState = false;
     }
 
     public void OnPoolDespawned()
@@ -325,6 +390,11 @@ public class EnemyAI : MonoBehaviour, IPooledObject
     {
         playerTransform = target;
         playerHealth = target != null ? target.GetComponent<HealthComponent>() : null;
+
+        // Objetivo nuevo o reasignado: se invalida la ventana de throttling para que la
+        // ruta se recalcule en el primer Update (si no, tardaría hasta 0.25s en responder).
+        nextPathUpdateTime = 0f;
+        lastPlayerTargetPosition = target != null ? target.position : transform.position;
     }
 
     /// <summary>
@@ -384,32 +454,22 @@ public class EnemyAI : MonoBehaviour, IPooledObject
             }
         }
 
-        // Liberación de seguridad
+        // Liberación de seguridad del ATAQUE (no aplica daño).
         if (isAttacking)
         {
             attackSafetyTimer += Time.deltaTime;
 
-            float animationSpeed = Mathf.Max(0.1f, CurrentAttackAnimationSpeed);
-
-            // --- RESPALDO DEL GOLPE (si el Animation Event no llega) ---
-            // El clip AttackEnemy01 trae el evento 'ExecuteAttackHit' en el frame de impacto: ahí
-            // suenan el zarpazo y el daño. Si ese evento no se disparara (clip re-exportado sin él,
-            // método renombrado o Animator movido a otro GameObject), el golpe se resuelve por
-            // TIEMPO: el ataque nunca queda mudo ni deja de hacer daño.
-            // Con el evento funcionando este bloque no hace nada, porque attackHitResolved ya es true.
-            if (!attackHitResolved)
-            {
-                float fallbackLimit = (attackHitFallbackTime + Mathf.Max(0f, attackHitFallbackGrace)) / animationSpeed;
-
-                if (attackSafetyTimer >= fallbackLimit)
-                {
-                    LogMissingHitEventFallback();
-                    ExecuteAttackHit();
-                }
-            }
+            // --- IMPORTANTE: aquí NO se aplica daño en ningún momento ---
+            // El ÚNICO punto que hace daño es ExecuteAttackHit(), invocado por el Animation
+            // Event del clip en su frame exacto de impacto. Antes había aquí un "fallback por
+            // tiempo" (attackHitFallbackTime) que llamaba a ExecuteAttackHit() al llegar a un
+            // umbral: como MonoBehaviour.Update() se ejecuta ANTES que la evaluación del
+            // Animator, ese disparo adelantaba el daño al frame anterior al de la garra
+            // (el jugador veía el zarpazo y ya había recibido daño). Eliminado por completo.
+            // El Animated Event es ahora la fuente única e inevitable del golpe.
 
             // El margen se acorta si el ataque se reproduce más rápido.
-            float safetyLimit = attackSafetyTimeout / animationSpeed;
+            float safetyLimit = attackSafetyTimeout / Mathf.Max(0.1f, CurrentAttackAnimationSpeed);
 
             if (attackSafetyTimer >= safetyLimit)
             {
@@ -428,13 +488,104 @@ public class EnemyAI : MonoBehaviour, IPooledObject
         else if (!isAttacking && agent != null && agent.isOnNavMesh)
         {
             agent.isStopped = false;
-            agent.SetDestination(playerTransform.position);
+
+            // ==================================================================
+            // OPTIMIZACIÓN DE CPU: Throttling de SetDestination
+            // Antiguamente la ruta se recalculaba en CADA Update() de cada enemigo.
+            // Con una horda de ~100 enemigos a 120 FPS eso son ~12.000 consultas
+            // de pathfinding por segundo (la causa principal del saturado de CPU
+            // que terminaba en GPU Timeout / TDR de D3D11).
+            // Ahora solo se recalcula si:
+            //   1) Se agotó la ventana de este enemigo (0.15s - 0.25s, sorteada), y
+            //   2) El jugador se ha movido más de 'playerMoveThreshold' (0.5 u).
+            // El NavMesh conserva la ruta existente entre recálculos, así que el
+            // movimiento es idéntico a ojos del jugador, solo con menos cálculo.
+            // ==================================================================
+            if (ShouldUpdatePath())
+            {
+                agent.SetDestination(playerTransform.position);
+            }
 
             if (animator != null)
             {
-                animator.SetBool(IsMovingHash, agent.velocity.magnitude > 0.1f);
+                // SetBool solo cuando el valor cambia: evita una llamada nativa por
+                // enemigo y frame (ahorro real con hordas grandes).
+                bool isMovingNow = agent.velocity.magnitude > 0.1f;
+
+                if (isMovingNow != animatorMovingState)
+                {
+                    animatorMovingState = isMovingNow;
+                    animator.SetBool(IsMovingHash, isMovingNow);
+                }
             }
         }
+    }
+
+    /// <summary>
+    /// Sortea la ventana de recálculo de ruta de ESTE enemigo dentro de [min, max].
+    /// Al ser aleatorio por instancia, los enemigos de una horda no sincronizan sus
+    /// recálculos en el mismo frame: el coste de CPU se reparde en lugar de darse en picos.
+    /// </summary>
+    private void RollPathUpdateInterval()
+    {
+        float min = Mathf.Max(0.02f, pathUpdateIntervalMin);
+        float max = Mathf.Max(min, pathUpdateIntervalMax);
+
+        pathUpdateInterval = Random.Range(min, max);
+    }
+
+    /// <summary>
+    /// Devuelve true únicamente cuando este enemigo tiene permiso de recalcular su ruta.
+    /// Reglas:
+    ///   - Fuera de su ventana (0.15s - 0.25s, sorteada por instancia): NUNCA recalcula.
+    ///   - Dentro de la ventana: solo recalcula si el jugador se movió &gt;= 0.5 unidades.
+    ///   - Sin ruta activa: se fuerza el recálculo (spawn desde el pool, reinicio de escena,
+    ///     destino invalidado o fin de ataque), para que el enemigo nunca se quede quieto.
+    /// </summary>
+    private bool ShouldUpdatePath()
+    {
+        if (agent == null || playerTransform == null) return false;
+
+        // 1) El agente no tiene ninguna ruta activa: hay que darle una sí o sí.
+        //    Cubre el primer frame tras aparecer del pool, el reinicio de escena y el
+        //    caso de que el NavMesh haya invalidado la ruta (destino inalcanzable).
+        //    Se ignora si una ruta está a punto de estar lista (pathPending): ahí el
+        //    SetDestination ya se emitió y recalcular otra vez sería tirar CPU a la basura.
+        if (!agent.hasPath && !agent.pathPending)
+        {
+            RefreshPathTracking();
+            return true;
+        }
+
+        // 2) Fuera de la ventana de este enemigo: no se toca nada.
+        if (Time.time < nextPathUpdateTime)
+        {
+            return false;
+        }
+
+        // 3) Ventana agotada: solo recalcula si el jugador se ha movido lo suficiente.
+        if ((playerTransform.position - lastPlayerTargetPosition).sqrMagnitude >= playerMoveThreshold * playerMoveThreshold)
+        {
+            RefreshPathTracking();
+            return true;
+        }
+
+        // 4) El jugador apenas se movió: se aplaza la ventana sin recalcular nada.
+        nextPathUpdateTime = Time.time + pathUpdateInterval;
+        return false;
+    }
+
+    /// <summary>
+    /// Registra la ruta que se acaba de calcular y programa la próxima ventana de este enemigo.
+    /// </summary>
+    private void RefreshPathTracking()
+    {
+        if (playerTransform != null)
+        {
+            lastPlayerTargetPosition = playerTransform.position;
+        }
+
+        nextPathUpdateTime = Time.time + pathUpdateInterval;
     }
 
     private void StartAttack()
@@ -469,6 +620,12 @@ public class EnemyAI : MonoBehaviour, IPooledObject
 
         if (animator != null)
         {
+            // CORRECCIÓN CRÍTICA: el culling de animación rompe los Animation Events.
+            // Con CullUpdateTransforms, si el enemigo queda fuera del frustum el Animator
+            // NO evalúa el clip y ExecuteAttackHit() nunca se dispara (=> daño cero).
+            // Como el rango de ataque (radio ~2m) puede alcanzarse desde fuera de cámara,
+            // durante el ataque se fuerza AlwaysAnimate para garantizar el evento exacto.
+            animator.cullingMode = AnimatorCullingMode.AlwaysAnimate;
             animator.ResetTrigger(AttackHash);
             animator.SetTrigger(AttackHash);
         }
@@ -476,19 +633,37 @@ public class EnemyAI : MonoBehaviour, IPooledObject
 
     // =========================================================================
     // EVENTO DE ANIMACIÓN: Golpe de precisión frontal
-    // Lo invoca el Animation Event 'ExecuteAttackHit' del clip AttackEnemy01 en el frame de
-    // impacto (0.38s de animación). Es el ÚNICO punto donde se aplica daño Y donde suena el
-    // zarpazo: así el audio siempre queda sincronizado con el impacto real (hit frame sync).
+    // -------------------------------------------------------------------------
+    // Lo invoca el Animation Event 'ExecuteAttackHit' del clip de ataque en SU frame
+    // exacto de impacto. Es la ÚNICA fuente de daño y del SFX del zarpazo de todo el
+    // proyecto: así el audio, el daño y la animación van siempre sincronizados.
+    //
+    // CONEXIÓN CON EL ANIMATOR (requisito):
+    //   - El método es PÚBLICO, que es lo que exige Unity para resolverlo en un
+    //     Animation Event (Unity lo invoca por SendMessage sobre el GameObject que
+    //     tiene el Animator; por eso debe ser public y sin parámetros).
+    //   - El Animator se busca con GetComponentInChildren<Animator>(), por lo que el
+    //     evento funciona tanto si el Animator está en el propio objeto del enemigo
+    //     como si está en un hijo (modelo visual). SendMessage llega igual a este
+    //     componente porque ambos están bajo el mismo GameObject raíz.
+    //   - AttackHash dispara el estado/trigger "Attack"; el clip de ese estado lleva
+    //     el evento a ~0.38s de animación (frame en que la garra contacta al jugador).
     // =========================================================================
     public void ExecuteAttackHit()
     {
-        // Un solo golpe por ataque: si el Animation Event llegara duplicado no se aplicaría el
-        // daño ni se repetiría el sonido dos veces.
+        // 1) Un solo golpe por ataque: si el evento llegara duplicado (p. ej. dos capas
+        //    del Animator evaluando el mismo clip) no se aplicaría daño ni se repetiría
+        //    el sonido dos veces.
         if (attackHitResolved) return;
+
+        // 2) Si el ataque ya terminó (evento huérfano de un estado anterior, o el enemigo
+        //    fue liberado por el timeout de seguridad), el golpe ya no es válido: nunca
+        //    se aplica daño fuera de la ventana de impacto de una animación en curso.
+        if (!isAttacking) return;
 
         attackHitResolved = true;
 
-        // --- SFX EN EL FRAME DE IMPACTO (acierte o falle: es el sonido del zarpazo) ---
+        // --- SFX EN EL FRAME DE IMPACTO (acierte o falle: es el sonido de la garra) ---
         PlayAttackSFX();
 
         if (playerTransform == null || enemyData == null) return;
@@ -498,30 +673,29 @@ public class EnemyAI : MonoBehaviour, IPooledObject
             playerHealth = playerTransform.GetComponent<HealthComponent>();
         }
 
-        Vector3 directionToPlayer = (playerTransform.position - transform.position).normalized;
-        directionToPlayer.y = 0; // Ignorar diferencia de altura
+        if (playerHealth == null) return;
 
-        // 1. Verificar si el Pastor está enfrente del Imp (Ángulo de ataque)
-        float dotProduct = Vector3.Dot(transform.forward, directionToPlayer);
+        Vector3 directionToPlayer = playerTransform.position - transform.position;
+        directionToPlayer.y = 0f; // Ignorar diferencia de altura
 
-        // 2. Verificar distancia
-        float distanceToPlayer = Vector3.Distance(transform.position, playerTransform.position);
-        float effectiveHitRadius = EffectiveHitRadius;
+        float sqrDistance = directionToPlayer.sqrMagnitude;
+        float sqrHitRadius = EffectiveHitRadius * EffectiveHitRadius;
 
-        // SOLO HACE DAÑO SI: Está en rango Y el jugador está en un cono frontal de ~120° (dotProduct > 0.3f)
-        if (distanceToPlayer <= effectiveHitRadius && dotProduct > 0.3f)
+        // Fuera de radio: ni siquiera se normaliza ni se calcula el dot product.
+        if (sqrDistance > sqrHitRadius) return;
+
+        // Evitar normalizar un vector nulo cuando el enemigo está exactamente encima.
+        if (sqrDistance > 0.0001f)
         {
-            if (playerHealth != null)
-            {
-                float damage = CurrentDamage;
-                playerHealth.TakeDamage(damage);
-                Debug.Log($"<color=red>[EnemyAI] ¡Zarpazo frontal certero! Daño: {damage:0.0}</color>");
-            }
+            directionToPlayer /= Mathf.Sqrt(sqrDistance);
         }
-        else
-        {
-            Debug.Log("<color=cyan>[EnemyAI] El zarpazo falló (Pastor fuera del ángulo o a la espalda).</color>");
-        }
+
+        // Cono frontal de ~120° (dotProduct > 0.3f). Se evalúa en el frame exacto del
+        // evento, así que si el jugador esquivó hacia un lado el zarpazo falla de verdad.
+        if (Vector3.Dot(transform.forward, directionToPlayer) <= 0.3f) return;
+
+        // Daño aplicado únicamente aquí: sin daño anticipado.
+        playerHealth.TakeDamage(CurrentDamage);
     }
 
     /// <summary>
@@ -537,23 +711,6 @@ public class EnemyAI : MonoBehaviour, IPooledObject
         if (audio == null) return;
 
         audio.PlaySFXAtPosition(impAttackSFX, transform.position, attackSfxVolume, attackSfxPitchVariation);
-    }
-
-    /// <summary>
-    /// Aviso (una sola vez por instancia) de que el golpe se resolvió con el respaldo por tiempo en
-    /// lugar del Animation Event: el ataque suena y hace daño, pero conviene revisar el clip para
-    /// un sincronizado exacto con la garra.
-    /// </summary>
-    private void LogMissingHitEventFallback()
-    {
-        if (!logMissingHitEvent || attackHitFallbackLogged) return;
-
-        attackHitFallbackLogged = true;
-
-        Debug.LogWarning(
-            $"[EnemyAI] '{gameObject.name}': el Animation Event 'ExecuteAttackHit' no llegó; el golpe " +
-            "y su SFX se han resuelto por tiempo (fallback). Revisa el Animation Event del clip de ataque.",
-            this);
     }
 
     public void OnAttackFinished()
@@ -574,9 +731,22 @@ public class EnemyAI : MonoBehaviour, IPooledObject
         isAttacking = false;
         attackSafetyTimer = 0f;
 
+        // Restaura el culling de animación: fuera del ataque ya no hace falta evaluación
+        // continua, así que el enemigo vuelve a ahorrar CPU cuando no se ve en cámara.
+        if (animator != null)
+        {
+            animator.cullingMode = AnimatorCullingMode.CullUpdateTransforms;
+        }
+
         if (agent != null && agent.isOnNavMesh)
         {
             agent.isStopped = false;
+            // El ataque deja al agente sin ruta: se fuerza el recálculo en el primer Update
+            // posterior para que el enemigo vuelva a perseguir sin parón.
+            nextPathUpdateTime = 0f;
+            lastPlayerTargetPosition = playerTransform != null
+                ? playerTransform.position
+                : transform.position;
         }
     }
 }

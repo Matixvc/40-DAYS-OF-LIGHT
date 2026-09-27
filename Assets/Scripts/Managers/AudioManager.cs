@@ -98,7 +98,25 @@ public class AudioManager : MonoBehaviour
     [SerializeField, Min(0f)] private float musicFadeInDuration = 1.5f;
     private Coroutine musicFadeCoroutine;
 
-    [SerializeField] private float defaultMusicVolume = 0.25f;
+    [Header("Volumen Base de Música")]
+    [Range(0f, 1f)]
+    [SerializeField] private float musicVolume = 0.35f;
+    [SerializeField] private float defaultMusicVolume = 0.35f;
+
+    /// <summary>Volumen base de la música accesible y configurable.</summary>
+    public float MusicVolume
+    {
+        get => musicVolume;
+        set
+        {
+            musicVolume = Mathf.Clamp01(value);
+            defaultMusicVolume = musicVolume;
+            if (musicSource != null)
+            {
+                musicSource.volume = musicVolume;
+            }
+        }
+    }
     private void Awake()
     {
         if (Instance != null)

@@ -7,7 +7,7 @@
   - Layers:
     - Default, TransparentFX, Ignore Raycast, Water, UI, Terreno, Player, Enemy
 - Active game object:
-  - Name: React Death_PlayerPastor
-  - Tag: Untagged
-  - Layer: Default
+  - Name: Enemy01
+  - Tag: Enemy
+  - Layer: Enemy
 <!-- UNITY CODE ASSIST INSTRUCTIONS END -->

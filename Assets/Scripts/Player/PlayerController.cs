@@ -317,27 +317,102 @@ public class PlayerController : MonoBehaviour
         cooldownTimer = 0f;
         distanceSinceLastStep = 0f;
 
+        if (animator == null)
+        {
+            animator = GetComponentInChildren<Animator>();
+        }
+
         if (animator != null)
         {
+            animator.enabled = true;
+            if (animator.speed <= 0f)
+            {
+                animator.speed = 1f;
+            }
+
             animator.SetFloat(SpeedHash, 0f);
+
+            Debug.Log($"[Player] Disparando Trigger de Muerte en Animator: {animator.gameObject.name}");
 
             if (HasTrigger(animator, DieHash))
             {
                 animator.SetTrigger(DieHash);
             }
-            else if (logMissingDeathTrigger)
+            else
             {
-                Debug.LogWarning(
-                    "[PlayerController] El Animator no tiene el Trigger 'Die': el jugador se quedará " +
-                    "quieto, pero sin animación de muerte. Añádelo en " +
-                    "Assets/Animations/PlayerPastor_AnimatorController.controller " +
-                    "(Parameters → + → Trigger → 'Die').",
-                    this);
+                animator.SetTrigger("Die");
+                if (logMissingDeathTrigger)
+                {
+                    Debug.Log("[PlayerController] Disparando Trigger 'Die' directo en Animator.", this);
+                }
             }
+        }
+
+        // Deshabilitar CharacterController y colliders para que los enemigos no sigan empujándolo ni haciéndole daño
+        if (controller != null)
+        {
+            controller.enabled = false;
+        }
+
+        Collider[] colliders = GetComponentsInChildren<Collider>();
+        for (int i = 0; i < colliders.Length; i++)
+        {
+            colliders[i].enabled = false;
         }
 
         // Inhabilita controles e inputs: Update deja de ejecutarse (sin movimiento, sin sprint, sin pasos).
         enabled = false;
+    }
+
+    /// <summary>
+    /// Devuelve la duración real (en segundos) de la animación de muerte ("Die" / "Dead").
+    /// Si no se puede determinar desde los clips o el estado del Animator, devuelve 1.5s como fallback seguro.
+    /// </summary>
+    public float GetDeathAnimationDuration()
+    {
+        if (animator == null)
+        {
+            animator = GetComponentInChildren<Animator>();
+        }
+
+        if (animator == null)
+        {
+            return 1.5f;
+        }
+
+        // 1. Intentar buscar un clip que contenga "dead" o "die" en su nombre dentro del runtime controller
+        if (animator.runtimeAnimatorController != null)
+        {
+            AnimationClip[] clips = animator.runtimeAnimatorController.animationClips;
+            if (clips != null)
+            {
+                for (int i = 0; i < clips.Length; i++)
+                {
+                    if (clips[i] != null)
+                    {
+                        string clipName = clips[i].name.ToLowerInvariant();
+                        if (clipName.Contains("death") || clipName.Contains("die") || clipName.Contains("dead"))
+                        {
+                            float duration = clips[i].length;
+                            if (duration > 0.1f)
+                            {
+                                Debug.Log($"[PlayerController] Duración de clip de muerte encontrada ({clips[i].name}): {duration:F2}s");
+                                return duration;
+                            }
+                        }
+                    }
+                }
+            }
+        }
+
+        // 2. Intentar leer la duración del estado actual en el layer 0
+        AnimatorStateInfo stateInfo = animator.GetCurrentAnimatorStateInfo(0);
+        if (stateInfo.length > 0.1f)
+        {
+            return stateInfo.length;
+        }
+
+        return 1.5f;
     }
 
     /// <summary>

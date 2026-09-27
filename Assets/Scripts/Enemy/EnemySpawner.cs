@@ -355,6 +355,12 @@ public class EnemySpawner : MonoBehaviour
         HealthComponent enemyHealth = spawnedEnemy.GetComponentInChildren<HealthComponent>(true);
         EnemyAI enemyAI = spawnedEnemy.GetComponentInChildren<EnemyAI>(true);
 
+        if (enemyAI != null)
+        {
+            // Reseteo preventivo completo para asegurar que no conserve flags de congelación de una partida previa
+            enemyAI.ResetEnemyState();
+        }
+
         if (enemyHealth != null)
         {
             // Escala desde la vida BASE del enemigo y la deja llena.

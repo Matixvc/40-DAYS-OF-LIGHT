@@ -4581,6 +4581,7 @@ MonoBehaviour:
   runEndMusicVolume: 0.3
   musicFadeOutDuration: 1.2
   musicFadeInDuration: 1.5
+  musicVolume: 0.35
   defaultMusicVolume: 0.25
 --- !u!114 &677101672
 MonoBehaviour:
@@ -8927,7 +8928,7 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: b7c24e5ad1f0439f8e6b70c2d5a81f43, type: 3}
   m_Name: 
   m_EditorClassIdentifier: Assembly-CSharp::UIClickSfx
-  clickSFX: {fileID: 0}
+  clickSFX: {fileID: 8300000, guid: b568d6439c2a5f34590837abba48fde2, type: 3}
   volume: 0.6
   ignoreNonInteractable: 1
 --- !u!1 &1597010100

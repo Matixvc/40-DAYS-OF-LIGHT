@@ -28,7 +28,7 @@ public class GameManager : MonoBehaviour
     [Tooltip("Ataque automático del jugador: sin desactivarlo seguiría golpeando después de morir.")]
     [SerializeField] private PlayerAttack playerAttack;
     [Tooltip("Retardo en TIEMPO REAL (s) entre la muerte y el panel de Game Over con el juego congelado.")]
-    [SerializeField, Min(0f)] private float deathSequenceDelay = 2f;
+    [SerializeField, Min(0f)] private float deathSequenceDelay = 1.5f;
     [SerializeField] private bool logDeathSequence = true;
 
     [Header("Input (Input System)")]
@@ -219,24 +219,26 @@ public class GameManager : MonoBehaviour
 
     /// <summary>
     /// Secuencia de muerte, en orden:
-    /// 1) el jugador pierde el control y se queda en su animación de muerte,
-    /// 2) todos los enemigos activos quedan estáticos y se interrumpe la generación,
-    /// 3) suenan el SFX de muerte (2D) y la música de derrota con fundido cruzado,
-    /// 4) tras <see cref="deathSequenceDelay"/> segundos EN TIEMPO REAL se muestra el panel y se
-    ///    congela el juego (Time.timeScale = 0) a través de GameStateController.
+    /// 1) el jugador pierde el control y se reproduce la animación de muerte ("Die" / "Dead"),
+    /// 2) suenan el SFX de muerte (2D) y la música de derrota con fundido cruzado,
+    /// 3) se espera exactamente la duración de la animación en tiempo real con yield return new WaitForSecondsRealtime(),
+    /// 4) ÚNICAMENTE al terminar la animación: se congela el juego (Time.timeScale = 0) y se despliega la GameOverUI.
     /// </summary>
     private IEnumerator GameOverSequenceRoutine()
     {
         PlayDeathFeedback();
 
-        float elapsed = 0f;
-
-        while (elapsed < deathSequenceDelay)
+        // Obtener la duración exacta de la animación de muerte del jugador (o fallback de 1.5s)
+        float deathAnimDuration = playerController != null ? playerController.GetDeathAnimationDuration() : deathSequenceDelay;
+        if (deathAnimDuration <= 0.1f)
         {
-            // Tiempo NO escalado: la espera no debe depender de Time.timeScale ni de futuras pausas.
-            elapsed += Time.unscaledDeltaTime;
-            yield return null;
+            deathAnimDuration = 1.5f;
         }
+
+        Debug.Log($"[GameManager] Esperando finalización de animación de muerte: {deathAnimDuration:F2}s");
+
+        // Espera en tiempo real mientras el personaje cae y reproduce su animación
+        yield return new WaitForSecondsRealtime(deathAnimDuration);
 
         EnterGameOverState();
     }
@@ -262,8 +264,9 @@ public class GameManager : MonoBehaviour
             playerAttack.enabled = false;
         }
 
-        // 2. Enemigos activos: quietos, sin animarse y sin atacar.
-        FreezeActiveEnemies();
+        // 2. Enemigos activos: NO se congelan artificialmente para evitar conflictos con el
+        // NavMeshAgent y permitir que la caída fluya natural hasta el despliegue del Game Over.
+        // FreezeActiveEnemies();
 
         // 3. Se cierra la partida: detiene el spawn y el jefe (y avisa a quien escuche OnRunEnded).
         StopSpawning();
@@ -328,6 +331,9 @@ public class GameManager : MonoBehaviour
     /// <summary>Último paso de la secuencia: panel de Game Over visible y tiempo congelado.</summary>
     private void EnterGameOverState()
     {
+        // Aplicar explícitamente Time.timeScale = 0f justo al finalizar la animación
+        Time.timeScale = 0f;
+
         GameStateController stateController = GameStateController.Instance;
 
         if (stateController == null)
@@ -341,8 +347,9 @@ public class GameManager : MonoBehaviour
         else if (!stateController.RequestGameOver())
         {
             Debug.LogWarning(
-                $"[GameManager] La transición a GameOver fue rechazada (estado actual: {stateController.CurrentState}).",
+                $"[GameManager] La transición a GameOver fue rechazada (estado actual: {stateController.CurrentState}). Forzando despliegue de UI.",
                 this);
+            ShowGameOverUI();
         }
 
         Debug.Log("<color=red>[GameManager] Fin de la partida. Presiona R o el botón para reintentar.</color>");
@@ -421,6 +428,12 @@ public class GameManager : MonoBehaviour
     {
         isGameOver = false;
 
+        // Limpiar/reciclar todos los objetos y enemigos activos de los pools antes de reiniciar
+        if (ObjectPoolManager.Instance != null)
+        {
+            ObjectPoolManager.Instance.ClearAllPools();
+        }
+
         // El AudioManager persiste entre escenas: hay que devolverle la música de partida.
         RestoreGameplayMusic();
 
@@ -435,6 +448,6 @@ public class GameManager : MonoBehaviour
             stateController.RequestRestart();
         }
 
-        SceneManager.LoadScene(SceneManager.GetActiveScene().buildIndex);
+        UnityEngine.SceneManagement.SceneManager.LoadScene(UnityEngine.SceneManagement.SceneManager.GetActiveScene().buildIndex);
     }
 }
