@@ -24,6 +24,7 @@ El diseño arquitectónico completo, la narrativa, las curvas de balance y las d
 * **Estrategia URP Dual-Pipeline:** Configuraciones optimizadas diferenciadas (`Mobile_RPAsset` a 0.8x Render Scale vs `PC_RPAsset` con sombras dinámicas suaves y SSAO).
 * **Controles Híbridos Adaptativos:** Detección automática de plataforma (Teclado/Ratón en PC, Joystick y botones táctiles minimalistas en móviles).
 * **UI Minimalista Estilizada:** Interfaz limpia generada mediante activos vectoriales estilizados de alto contraste y tipografía nítida con TextMeshPro.
+* **Juice Cero-Allocación:** Sacudida de cámara (`CameraShake`) y números de daño flotantes (`DamageNumber` en TextMeshPro World Space) reciclados desde el mismo *Object Pool*: sin `Instantiate`/`Destroy` ni corrutinas durante el combate.
 
 ---
 
@@ -93,6 +94,7 @@ Assets/
     ├── Input/ (PlayerInputReader, TouchControlsUI, VirtualJoystick, VirtualButton)
     ├── Environment/ (EnvironmentLightingController)
     ├── Optimization/ (PerformanceBootstrap, PostProcessingBootstrap, ObjectPoolManager)
+    ├── Juice/ (CameraShake, DamageNumber)
     ├── UI/ + ScriptableObject/ + Runtime/RunStats.cs
 ```
 

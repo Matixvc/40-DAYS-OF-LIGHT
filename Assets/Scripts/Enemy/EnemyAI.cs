@@ -7,7 +7,16 @@ public class EnemyAI : MonoBehaviour, IPooledObject
     [SerializeField] private EnemyDataSO enemyData;
 
     [Header("Audio de Ataque")]
-    [SerializeField] private AudioClip impAttackSFX; // Asigna AtackEnemy.mp3 aquí
+    [Tooltip("Sonido del zarpazo (AtackEnemy.mp3). Se reproduce en el FRAME DE IMPACTO, " +
+             "sincronizado con el Animation Event ExecuteAttackHit del clip de ataque.")]
+    [SerializeField] private AudioClip impAttackSFX;
+    [Range(0f, 1f)]
+    [Tooltip("Volumen del zarpazo. El SFX suena en el FRAME DE IMPACTO, así que debe destacar sobre " +
+             "la música: por debajo de ~0.6 se pierde detrás de la mezcla.")]
+    [SerializeField] private float attackSfxVolume = 0.75f;
+    [Range(0f, 0.2f)]
+    [Tooltip("Variación de tono (±) del zarpazo: dos golpes seguidos no suenan idénticos.")]
+    [SerializeField] private float attackSfxPitchVariation = 0.08f;
 
     private NavMeshAgent agent;
     private Animator animator;
@@ -17,6 +26,15 @@ public class EnemyAI : MonoBehaviour, IPooledObject
     private float lastAttackTime;
     private bool isAttacking;
     private float attackSafetyTimer;
+
+    /// <summary>
+    /// True cuando el golpe del ataque actual ya se resolvió (por el Animation Event). Evita
+    /// aplicar daño o repetir el SFX dos veces si el evento llegara duplicado.
+    /// </summary>
+    private bool attackHitResolved;
+
+    /// <summary>El aviso de "Animation Event perdido" solo se emite una vez por instancia.</summary>
+    private bool attackHitWarningLogged;
 
     [Header("Ataque")]
     [Tooltip("Margen extra (metros) sobre el rango de ataque del EnemyDataSO: no hace falta estar encima del jugador.")]
@@ -28,6 +46,18 @@ public class EnemyAI : MonoBehaviour, IPooledObject
     [Tooltip("Cuánto influye la velocidad de movimiento en la velocidad del ataque (0 = nada, 1 = igual).")]
     [Range(0f, 1f)]
     [SerializeField] private float attackSpeedSpeedInfluence = 0.5f;
+    [Tooltip("Diagnóstico (APAGADO por defecto para dejar la consola de Unity 100% limpia): avisa una vez " +
+             "por instancia si la animación de ataque termina sin invocar ExecuteAttackHit(). Actívalo solo " +
+             "para depurar un clip: el respaldo por tiempo resuelve el golpe y su SFX con precisión (~0.28s), " +
+             "así que con el evento ausente no hay ruido de consola, solo el mecanismo de respaldo.")]
+    [SerializeField] private bool logMissingHitEvent = false;
+    [Tooltip("Respaldo del golpe: instante (segundos de ANIMACIÓN) en el que el clip tiene el " +
+             "Animation Event de impacto (AttackEnemy01: 0.38s). Si el evento no llegara, el golpe " +
+             "y su SFX se resuelven aquí para que el ataque nunca quede mudo.")]
+    [SerializeField] private float attackHitFallbackTime = 0.38f;
+    [Tooltip("Margen extra (segundos de animación) que se espera antes de dar el Animation Event " +
+             "por perdido. Evita el doble golpe si el evento real llega ligeramente tarde.")]
+    [SerializeField] private float attackHitFallbackGrace = 0.08f;
 
     [Header("Escalado de Dificultad (runtime)")]
     [Tooltip("Tiempo máximo que puede durar la animación de ataque antes de liberar al enemigo.")]
@@ -40,12 +70,24 @@ public class EnemyAI : MonoBehaviour, IPooledObject
     private bool isBoss;
     private Vector3 baseScale = Vector3.one;
 
+    /// <summary>
+    /// True cuando el enemigo está congelado (secuencia de muerte del jugador): no persigue, no
+    /// ataca y su animación queda parada.
+    /// </summary>
+    private bool isFrozen;
+
     [Header("Jefe")]
     [Tooltip("Nombre del objeto hijo que se activa si esta instancia se marca como jefe (opcional).")]
     [SerializeField] private string bossAuraChildName = "BossAura";
 
     private static readonly int IsMovingHash = Animator.StringToHash("IsMoving");
     private static readonly int AttackHash = Animator.StringToHash("Attack");
+
+    /// <summary>
+    /// Aviso del respaldo ya emitido: se registra una sola vez por instancia para no inundar la
+    /// consola (la instancia se recicla y el diagnóstico se repetiría en cada aparición).
+    /// </summary>
+    private bool attackHitFallbackLogged;
 
     private void Awake()
     {
@@ -114,6 +156,41 @@ public class EnemyAI : MonoBehaviour, IPooledObject
     /// <summary>True si esta instancia es un Jefe de Noche.</summary>
     public bool IsBoss => isBoss;
 
+    /// <summary>True si el enemigo está congelado (fin de partida: permanece estático).</summary>
+    public bool IsFrozen => isFrozen;
+
+    /// <summary>
+    /// Congela (o descongela) al enemigo por completo: detiene su NavMeshAgent y su animación para
+    /// que quede estático. El Update sale de inmediato, así que tampoco arranca ataques nuevos ni
+    /// aplica el respaldo del golpe. Lo usa la secuencia de muerte del jugador (GameManager).
+    /// </summary>
+    public void SetFrozen(bool value)
+    {
+        if (isFrozen == value) return;
+
+        isFrozen = value;
+
+        if (agent != null && agent.enabled && agent.isOnNavMesh)
+        {
+            if (value)
+            {
+                agent.isStopped = true;
+                agent.ResetPath();
+            }
+            else
+            {
+                agent.isStopped = false;
+            }
+        }
+
+        if (animator != null)
+        {
+            // Congelar también la animación: deja al enemigo completamente quieto (ni caminar ni atacar).
+            animator.SetBool(IsMovingHash, false);
+            animator.speed = value ? 0f : 1f;
+        }
+    }
+
     /// <summary>
     /// Marca esta instancia como jefe: activa el aura opcional (hijo por nombre) y permite
     /// que otros sistemas la traten de forma especial (por ejemplo, no empujable por el jugador).
@@ -146,6 +223,13 @@ public class EnemyAI : MonoBehaviour, IPooledObject
         isBoss = false;
         attackSafetyTimer = 0f;
         lastAttackTime = 0f;
+
+        // Instancia reciclada: el ataque empieza de cero y el diagnóstico puede avisar otra vez.
+        attackHitResolved = false;
+        attackHitWarningLogged = false;
+
+        // Ningún enemigo del pool puede volver a la escena congelado por una muerte anterior.
+        isFrozen = false;
 
         damageMultiplier = 1f;
         speedMultiplier = 1f;
@@ -241,6 +325,9 @@ public class EnemyAI : MonoBehaviour, IPooledObject
 
     private void Update()
     {
+        // Fin de partida: el enemigo queda estático (ni persigue, ni ataca, ni anima).
+        if (isFrozen) return;
+
         if (playerTransform == null || enemyData == null) return;
 
         // La animación va acelerada SOLO durante el ataque y a velocidad normal el resto del tiempo.
@@ -259,8 +346,27 @@ public class EnemyAI : MonoBehaviour, IPooledObject
         {
             attackSafetyTimer += Time.deltaTime;
 
+            float animationSpeed = Mathf.Max(0.1f, CurrentAttackAnimationSpeed);
+
+            // --- RESPALDO DEL GOLPE (si el Animation Event no llega) ---
+            // El clip AttackEnemy01 trae el evento 'ExecuteAttackHit' en el frame de impacto: ahí
+            // suenan el zarpazo y el daño. Si ese evento no se disparara (clip re-exportado sin él,
+            // método renombrado o Animator movido a otro GameObject), el golpe se resuelve por
+            // TIEMPO: el ataque nunca queda mudo ni deja de hacer daño.
+            // Con el evento funcionando este bloque no hace nada, porque attackHitResolved ya es true.
+            if (!attackHitResolved)
+            {
+                float fallbackLimit = (attackHitFallbackTime + Mathf.Max(0f, attackHitFallbackGrace)) / animationSpeed;
+
+                if (attackSafetyTimer >= fallbackLimit)
+                {
+                    LogMissingHitEventFallback();
+                    ExecuteAttackHit();
+                }
+            }
+
             // El margen se acorta si el ataque se reproduce más rápido.
-            float safetyLimit = attackSafetyTimeout / Mathf.Max(0.1f, CurrentAttackAnimationSpeed);
+            float safetyLimit = attackSafetyTimeout / animationSpeed;
 
             if (attackSafetyTimer >= safetyLimit)
             {
@@ -293,11 +399,12 @@ public class EnemyAI : MonoBehaviour, IPooledObject
         isAttacking = true;
         attackSafetyTimer = 0f;
 
-        // --- REPRODUCIR SONIDO DE ATAQUE ---
-        if (AudioManager.Instance != null && impAttackSFX != null)
-        {
-            AudioManager.Instance.PlaySFXAtPosition(impAttackSFX, transform.position, 0.55f);
-        }
+        // El sonido del zarpazo YA NO se lanza aquí. La animación arranca con el "viento" del
+        // brazo, así que sonaba antes del golpe: el Animation Event del clip sitúa el impacto en
+        // 0.38s de animación y, a velocidad 1.35, eso son ~0.28s reales de desfase.
+        // Ahora el SFX lo dispara ExecuteAttackHit(), el evento del FRAME DE IMPACTO:
+        // audio y aplicación del daño van siempre juntos (hit frame sync).
+        attackHitResolved = false;
 
         if (agent != null && agent.isOnNavMesh)
         {
@@ -326,9 +433,21 @@ public class EnemyAI : MonoBehaviour, IPooledObject
 
     // =========================================================================
     // EVENTO DE ANIMACIÓN: Golpe de precisión frontal
+    // Lo invoca el Animation Event 'ExecuteAttackHit' del clip AttackEnemy01 en el frame de
+    // impacto (0.38s de animación). Es el ÚNICO punto donde se aplica daño Y donde suena el
+    // zarpazo: así el audio siempre queda sincronizado con el impacto real (hit frame sync).
     // =========================================================================
     public void ExecuteAttackHit()
     {
+        // Un solo golpe por ataque: si el Animation Event llegara duplicado no se aplicaría el
+        // daño ni se repetiría el sonido dos veces.
+        if (attackHitResolved) return;
+
+        attackHitResolved = true;
+
+        // --- SFX EN EL FRAME DE IMPACTO (acierte o falle: es el sonido del zarpazo) ---
+        PlayAttackSFX();
+
         if (playerTransform == null || enemyData == null) return;
 
         if (playerHealth == null)
@@ -362,8 +481,53 @@ public class EnemyAI : MonoBehaviour, IPooledObject
         }
     }
 
+    /// <summary>
+    /// Reproduce el sonido del zarpazo en el instante del impacto (acierte o falle: es el sonido
+    /// del golpe). La variación de tono evita que una horda suene como un solo clip en bucle.
+    /// </summary>
+    private void PlayAttackSFX()
+    {
+        if (impAttackSFX == null) return;
+
+        AudioManager audio = AudioManager.Instance;
+
+        if (audio == null) return;
+
+        audio.PlaySFXAtPosition(impAttackSFX, transform.position, attackSfxVolume, attackSfxPitchVariation);
+    }
+
+    /// <summary>
+    /// Aviso (una sola vez por instancia) de que el golpe se resolvió con el respaldo por tiempo en
+    /// lugar del Animation Event: el ataque suena y hace daño, pero conviene revisar el clip para
+    /// un sincronizado exacto con la garra.
+    /// </summary>
+    private void LogMissingHitEventFallback()
+    {
+        if (!logMissingHitEvent || attackHitFallbackLogged) return;
+
+        attackHitFallbackLogged = true;
+
+        Debug.LogWarning(
+            $"[EnemyAI] '{gameObject.name}': el Animation Event 'ExecuteAttackHit' no llegó; el golpe " +
+            "y su SFX se han resuelto por tiempo (fallback). Revisa el Animation Event del clip de ataque.",
+            this);
+    }
+
     public void OnAttackFinished()
     {
+        // Diagnóstico: si la animación terminó sin pasar por el frame de impacto, el Animation
+        // Event se ha perdido (clip sustituido o editado) y este enemigo NO estaría haciendo daño.
+        // Se avisa una sola vez por instancia para no inundar la consola.
+        if (logMissingHitEvent && !attackHitResolved && !attackHitWarningLogged)
+        {
+            attackHitWarningLogged = true;
+            Debug.LogWarning(
+                $"[EnemyAI] '{gameObject.name}': la animación de ataque terminó sin invocar " +
+                "ExecuteAttackHit(). Revisa el Animation Event del clip de ataque: sin él el enemigo " +
+                "no aplica daño.", this);
+        }
+
+        attackHitResolved = true; // Un golpe tardío no debe aplicar daño fuera del ataque.
         isAttacking = false;
         attackSafetyTimer = 0f;
 

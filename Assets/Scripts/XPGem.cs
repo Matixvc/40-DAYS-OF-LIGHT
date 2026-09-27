@@ -17,6 +17,12 @@ public class XPGem : MonoBehaviour, IPooledObject
     private PlayerLevelSystem cachedPlayerLevel;
     private bool isMagnetized = false;
 
+    /// <summary>
+    /// True cuando esta gema ya se recogió (o se recicló): evita sumar XP o repetir el SFX dos veces
+    /// si el Update llegara a ejecutarse otra vez antes de que el pool la desactive.
+    /// </summary>
+    private bool isDespawned;
+
     private void Awake()
     {
         ResolvePlayer();
@@ -54,11 +60,13 @@ public class XPGem : MonoBehaviour, IPooledObject
     {
         // Estado limpio en cada reutilización desde el pool.
         isMagnetized = false;
+        isDespawned = false;
     }
 
     public void OnPoolDespawned()
     {
         isMagnetized = false;
+        isDespawned = true;
     }
 
     private void Update()
@@ -89,14 +97,16 @@ public class XPGem : MonoBehaviour, IPooledObject
 
     private void Collect(PlayerLevelSystem playerLevel)
     {
+        // Una gema solo se recoge una vez: sin esta guarda, dos recogidas en el mismo frame
+        // sumarían la XP (y el sonido) por duplicado.
+        if (isDespawned) return;
+
+        isDespawned = true;
+
         if (playerLevel != null)
         {
             playerLevel.AddXP(xpAmount);
-
-            if (AudioManager.Instance != null && gemPickupSFX != null)
-            {
-                AudioManager.Instance.PlaySFX(gemPickupSFX, 0.8f, 0.12f);
-            }
+            PlayPickupSfx();
         }
         // Reciclar la gema en lugar de destruirla: cero GC durante el gameplay.
         ObjectPoolManager pool = ObjectPoolManager.Instance;
@@ -108,5 +118,19 @@ public class XPGem : MonoBehaviour, IPooledObject
         }
 
         Destroy(gameObject);
+    }
+
+    /// <summary>
+    /// SFX de recogida (SFX_XPOp): usa el clip propio del prefab y, si no hay, el del catálogo del
+    /// AudioManager. El portero anti-saturación del manager evita el muro de sonido al recoger
+    /// muchas gemas de golpe.
+    /// </summary>
+    private void PlayPickupSfx()
+    {
+        AudioManager audio = AudioManager.Instance;
+
+        if (audio == null) return;
+
+        audio.PlayXpPickupSFX(gemPickupSFX);
     } 
 }

@@ -1634,6 +1634,18 @@ MonoBehaviour:
   m_EditorClassIdentifier: Assembly-CSharp::EnemyAI
   enemyData: {fileID: 11400000, guid: ec39ed64c8d50a74eb110949d4cdebdc, type: 2}
   impAttackSFX: {fileID: 8300000, guid: dd184c2c5f087404287755d2e488fbaa, type: 3}
+  attackSfxVolume: 0.75
+  attackSfxPitchVariation: 0.08
+  attackRangeBonus: 0.35
+  attackHitRadiusBonus: 0.4
+  attackSpeedMultiplier: 1.35
+  attackSpeedSpeedInfluence: 0.5
+  logMissingHitEvent: 0
+  attackHitFallbackTime: 0.38
+  attackHitFallbackGrace: 0.08
+  attackSafetyTimeout: 2
+  logSpawnScaling: 0
+  bossAuraChildName: BossAura
 --- !u!114 &5740185408267892228
 MonoBehaviour:
   m_ObjectHideFlags: 0
@@ -1649,7 +1661,19 @@ MonoBehaviour:
   playerData: {fileID: 0}
   enemyData: {fileID: 11400000, guid: ec39ed64c8d50a74eb110949d4cdebdc, type: 2}
   maxHealth: 30
+  hitAnimationCooldown: 0.4
+  avoidInterruptingAttacks: 1
+  destroyOnDeath: 1
+  destroyDelay: 0.05
   xpGemPrefab: {fileID: 8621731229149217239, guid: fe37b80ffd11c4444b968c1325861270, type: 3}
+  damageNumberPrefab: {fileID: 8896728826215894965, guid: 283124128b4fa39418028df35edcbbc0, type: 3}
+  damageNumberHeight: 1.5
+  damageSFX: {fileID: 8300000, guid: 19be6ceb88c4a49448520935dec8e279, type: 3}
+  damageSfxVolume: 0.6
+  damageSfxPitchVariation: 0.08
+  damageSfxCooldown: 0.08
+  playerDamageSfxVolume: 0.85
+  playerDamageSFX: []
 --- !u!1 &6179565489744290535
 GameObject:
   m_ObjectHideFlags: 0

@@ -19,6 +19,28 @@ public class PlayerController : MonoBehaviour
     [Header("Depuración")]
     [SerializeField] private bool logStatsChanges = true;
 
+    [Header("Audio de Pasos (Arena)")]
+    [Tooltip("Paso sobre arena al caminar (SFX_StepSand). Si se deja vacío se usa el catálogo del AudioManager.")]
+    [SerializeField] private AudioClip stepSandSFX;
+    [Tooltip("Paso sobre arena al correr (SFX_SprintSand). Si se deja vacío se usa el catálogo del AudioManager.")]
+    [SerializeField] private AudioClip sprintSandSFX;
+    [Tooltip("Metros recorridos entre pasos al caminar: la cadencia queda atada a la velocidad real.")]
+    [SerializeField, Min(0.1f)] private float walkStepDistance = 2f;
+    [Tooltip("Metros recorridos entre pasos al correr (zancada más larga).")]
+    [SerializeField, Min(0.1f)] private float sprintStepDistance = 2.6f;
+    [Range(0f, 1f)]
+    [SerializeField] private float footstepVolume = 0.5f;
+    [Range(0f, 0.2f)]
+    [SerializeField] private float footstepPitchVariation = 0.12f;
+    [SerializeField] private bool enableFootsteps = true;
+
+    [Header("Muerte")]
+    [Tooltip("Avisa una vez si el Animator no tiene el Trigger 'Die': la secuencia sigue, pero sin animación.")]
+    [SerializeField] private bool logMissingDeathTrigger = true;
+
+    private float distanceSinceLastStep;
+    private bool isDead;
+
     private CharacterController controller;
     private Animator animator;
     private Vector3 velocity;
@@ -30,7 +52,12 @@ public class PlayerController : MonoBehaviour
     private float cooldownTimer;
 
     private static readonly int SpeedHash = Animator.StringToHash("Speed");
+    private static readonly int DieHash = Animator.StringToHash("Die");
+
     public bool IsSprintOnCooldown => isSprintOnCooldown;
+
+    /// <summary>True desde que arranca la secuencia de muerte (sus controles ya están desactivados).</summary>
+    public bool IsDead => isDead;
     
     private void Awake()
     {
@@ -236,7 +263,104 @@ public class PlayerController : MonoBehaviour
     float speedPercent = direction.magnitude * (isSprinting ? sprintMult : 1f);
     animator.SetFloat(SpeedHash, speedPercent, 0.1f, Time.deltaTime);
     }
+
+    // 5. Pasos de arena sincronizados con el movimiento real
+    HandleFootsteps(direction, currentSpeed, isSprinting);
     }
+    /// <summary>
+    /// Pasos de arena sincronizados con el movimiento: la DISTANCIA recorrida marca la cadencia, así
+    /// la zancada se alarga al correr y los pasos se detienen cuando el jugador se para.
+    /// Clip propio del Player o, si no hay, el del catálogo del AudioManager (SFX_StepSand/SprintSand).
+    /// </summary>
+    private void HandleFootsteps(Vector3 direction, float currentSpeed, bool sprinting)
+    {
+        if (!enableFootsteps || controller == null) return;
+
+        // Solo con los pies en el suelo y con movimiento real (los deslizamientos no suenan).
+        if (!controller.isGrounded || direction.sqrMagnitude < 0.01f || currentSpeed <= 0.01f) return;
+
+        float strideDistance = Mathf.Max(0.1f, sprinting ? sprintStepDistance : walkStepDistance);
+
+        distanceSinceLastStep += currentSpeed * Time.deltaTime;
+
+        if (distanceSinceLastStep < strideDistance) return;
+
+        distanceSinceLastStep = 0f;
+
+        AudioManager audio = AudioManager.Instance;
+
+        if (audio == null) return;
+
+        audio.PlayFootstepSFX(
+            sprinting,
+            transform.position,
+            sprinting ? sprintSandSFX : stepSandSFX,
+            footstepVolume,
+            footstepPitchVariation);
+    }
+
+    /// <summary>
+    /// Secuencia de muerte del jugador: corta el sprint, dispara el Trigger 'Die' (si el Animator lo
+    /// tiene) e inhabilita este componente, de modo que deja de leer input y de moverse.
+    /// La invoca GameManager cuando la vida del jugador llega a 0.
+    /// </summary>
+    public void PlayDeathSequence()
+    {
+        if (isDead) return;
+
+        isDead = true;
+
+        // Estado de movimiento a cero: el Animator no puede quedarse en Locomotion/Walk.
+        isSprinting = false;
+        isSprintOnCooldown = false;
+        sprintTimer = 0f;
+        cooldownTimer = 0f;
+        distanceSinceLastStep = 0f;
+
+        if (animator != null)
+        {
+            animator.SetFloat(SpeedHash, 0f);
+
+            if (HasTrigger(animator, DieHash))
+            {
+                animator.SetTrigger(DieHash);
+            }
+            else if (logMissingDeathTrigger)
+            {
+                Debug.LogWarning(
+                    "[PlayerController] El Animator no tiene el Trigger 'Die': el jugador se quedará " +
+                    "quieto, pero sin animación de muerte. Añádelo en " +
+                    "Assets/Animations/PlayerPastor_AnimatorController.controller " +
+                    "(Parameters → + → Trigger → 'Die').",
+                    this);
+            }
+        }
+
+        // Inhabilita controles e inputs: Update deja de ejecutarse (sin movimiento, sin sprint, sin pasos).
+        enabled = false;
+    }
+
+    /// <summary>
+    /// True si el Animator declara un Trigger con ese hash. Evita el error de consola que provoca
+    /// SetTrigger con un parámetro inexistente (el Trigger 'Die' es opcional).
+    /// </summary>
+    private static bool HasTrigger(Animator targetAnimator, int parameterHash)
+    {
+        if (targetAnimator == null || targetAnimator.runtimeAnimatorController == null) return false;
+
+        AnimatorControllerParameter[] parameters = targetAnimator.parameters;
+
+        for (int i = 0; i < parameters.Length; i++)
+        {
+            if (parameters[i].type == AnimatorControllerParameterType.Trigger && parameters[i].nameHash == parameterHash)
+            {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
     // Propiedades para que la UI lea el estado del Sprint
     public float SprintPercent
     {

@@ -22,6 +22,15 @@ public class GameManager : MonoBehaviour
     [Tooltip("Botón opcional 'Menú principal' dentro del panel de Game Over.")]
     [SerializeField] private UnityEngine.UI.Button quitToMenuButton;
 
+    [Header("Secuencia de Muerte Cinematográfica")]
+    [Tooltip("Controles del jugador que se desactivan al morir. Si están vacíos se resuelven automáticamente.")]
+    [SerializeField] private PlayerController playerController;
+    [Tooltip("Ataque automático del jugador: sin desactivarlo seguiría golpeando después de morir.")]
+    [SerializeField] private PlayerAttack playerAttack;
+    [Tooltip("Retardo en TIEMPO REAL (s) entre la muerte y el panel de Game Over con el juego congelado.")]
+    [SerializeField, Min(0f)] private float deathSequenceDelay = 2f;
+    [SerializeField] private bool logDeathSequence = true;
+
     [Header("Input (Input System)")]
     [Tooltip("Lector de input del jugador. Si se deja vacío se resuelve automáticamente.")]
     [SerializeField] private PlayerInputReader inputReader;
@@ -54,6 +63,7 @@ public class GameManager : MonoBehaviour
         }
 
         ResolveInputReader();
+        ResolvePlayerReferences();
         WireQuitToMenuButton();
 
         // Garantizar que la UI de Game Over esté apagada al iniciar la partida
@@ -105,6 +115,36 @@ public class GameManager : MonoBehaviour
         inputReader.RestartPressed += HandleRestartPressed;
     }
 
+    /// <summary>
+    /// Cachea los componentes del jugador que se apagan al morir (controles y ataque automático).
+    /// Nunca se buscan por escena dentro de la secuencia de muerte.
+    /// </summary>
+    private void ResolvePlayerReferences()
+    {
+        if (playerController == null)
+        {
+            playerController = FindAnyObjectByType<PlayerController>();
+        }
+
+        if (playerAttack == null)
+        {
+            playerAttack = FindAnyObjectByType<PlayerAttack>();
+        }
+    }
+
+    /// <summary>
+    /// Devuelve la música de partida. El AudioManager persiste entre escenas (DontDestroyOnLoad), así
+    /// que sin esto la música de derrota seguiría sonando tras reiniciar o volver al menú.
+    /// </summary>
+    private void RestoreGameplayMusic()
+    {
+        AudioManager audio = AudioManager.Instance;
+
+        if (audio == null) return;
+
+        audio.RestorePlaylistMusic();
+    }
+
     private void WireQuitToMenuButton()
     {
         if (quitToMenuButton == null) return;
@@ -125,6 +165,8 @@ public class GameManager : MonoBehaviour
         }
 
         isGameOver = false;
+
+        RestoreGameplayMusic();
 
         GameStateController stateController = GameStateController.Instance;
         if (stateController != null)
@@ -149,15 +191,133 @@ public class GameManager : MonoBehaviour
         RestartGame();
     }
 
+    /// <summary>
+    /// Fin de partida: arranca la secuencia cinematográfica de muerte. NO congela el tiempo todavía:
+    /// eso ocurre al final, cuando el panel de Game Over aparece.
+    /// </summary>
     public void TriggerGameOver()
     {
         if (isGameOver) return;
 
         isGameOver = true;
 
-        // Preparar el texto ANTES de cambiar de estado (la UI se muestra al entrar en GameOver).
+        // Preparar el texto ANTES de todo: la UI lo mostrará al entrar en GameOver.
         UpdateGameOverStatsText();
 
+        StartCoroutine(GameOverSequenceRoutine());
+    }
+
+    /// <summary>
+    /// Secuencia de muerte, en orden:
+    /// 1) el jugador pierde el control y se queda en su animación de muerte,
+    /// 2) todos los enemigos activos quedan estáticos y se interrumpe la generación,
+    /// 3) suenan el SFX de muerte (2D) y la música de derrota con fundido cruzado,
+    /// 4) tras <see cref="deathSequenceDelay"/> segundos EN TIEMPO REAL se muestra el panel y se
+    ///    congela el juego (Time.timeScale = 0) a través de GameStateController.
+    /// </summary>
+    private IEnumerator GameOverSequenceRoutine()
+    {
+        PlayDeathFeedback();
+
+        float elapsed = 0f;
+
+        while (elapsed < deathSequenceDelay)
+        {
+            // Tiempo NO escalado: la espera no debe depender de Time.timeScale ni de futuras pausas.
+            elapsed += Time.unscaledDeltaTime;
+            yield return null;
+        }
+
+        EnterGameOverState();
+    }
+
+    /// <summary>Deja la partida quieta y muda: controles fuera, enemigos congelados, spawn parado y audio de derrota.</summary>
+    private void PlayDeathFeedback()
+    {
+        // 1. Jugador: Trigger 'Die' (si el Animator lo tiene) y controles/inputs desactivados.
+        if (playerController != null)
+        {
+            playerController.PlayDeathSequence();
+        }
+        else if (logDeathSequence)
+        {
+            Debug.LogWarning(
+                "[GameManager] Sin PlayerController asignado: los controles del jugador no se desactivarán al morir.",
+                this);
+        }
+
+        // El ataque automático seguiría disparando desde un jugador ya muerto.
+        if (playerAttack != null)
+        {
+            playerAttack.enabled = false;
+        }
+
+        // 2. Enemigos activos: quietos, sin animarse y sin atacar.
+        FreezeActiveEnemies();
+
+        // 3. Se cierra la partida: detiene el spawn y el jefe (y avisa a quien escuche OnRunEnded).
+        StopSpawning();
+
+        // 4. Audio: golpe de muerte en 2D y fundido hacia la música de derrota.
+        AudioManager audio = AudioManager.Instance;
+
+        if (audio != null)
+        {
+            audio.PlayPlayerDeathSFX();
+            audio.PlayGameOverMusic();
+        }
+        else if (logDeathSequence)
+        {
+            Debug.LogWarning("[GameManager] No hay AudioManager en la escena: la muerte será muda.", this);
+        }
+    }
+
+    /// <summary>
+    /// Congela a todos los enemigos activos con EnemyAI.SetFrozen(true). Se busca una sola vez, en el
+    /// instante de la muerte (nunca por frame).
+    /// </summary>
+    private void FreezeActiveEnemies()
+    {
+        // Overload sin FindObjectsSortMode: el que lo incluía está obsoleto en Unity 6 (CS0618).
+        EnemyAI[] enemies = FindObjectsByType<EnemyAI>(FindObjectsInactive.Exclude);
+
+        for (int i = 0; i < enemies.Length; i++)
+        {
+            enemies[i].SetFrozen(true);
+        }
+
+        if (logDeathSequence)
+        {
+            Debug.Log($"[GameManager] Enemigos congelados al morir el jugador: {enemies.Length}.", this);
+        }
+    }
+
+    /// <summary>
+    /// Interrumpe la generación de enemigos. Si el RunDirector sigue activo se cierra la partida con
+    /// él: FinishRun(false) para el spawner, desactiva al jefe y evita que su red de seguridad
+    /// vuelva a reactivar el spawn (solo se protege mientras la partida está activa).
+    /// </summary>
+    private void StopSpawning()
+    {
+        RunDirector runDirector = RunDirector.Instance;
+
+        if (runDirector != null && runDirector.IsRunActive)
+        {
+            runDirector.FinishRun(false);
+            return;
+        }
+
+        EnemySpawner spawner = FindAnyObjectByType<EnemySpawner>();
+
+        if (spawner != null)
+        {
+            spawner.SetSpawningEnabled(false);
+        }
+    }
+
+    /// <summary>Último paso de la secuencia: panel de Game Over visible y tiempo congelado.</summary>
+    private void EnterGameOverState()
+    {
         GameStateController stateController = GameStateController.Instance;
 
         if (stateController == null)
@@ -250,6 +410,9 @@ public class GameManager : MonoBehaviour
     public void RestartGame()
     {
         isGameOver = false;
+
+        // El AudioManager persiste entre escenas: hay que devolverle la música de partida.
+        RestoreGameplayMusic();
 
         // Devolver el control del tiempo al estado de juego antes de recargar la escena.
         GameStateController stateController = GameStateController.Instance;

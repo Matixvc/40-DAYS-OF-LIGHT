@@ -31,9 +31,56 @@ public class HealthComponent : MonoBehaviour
     private float xpReward = 15f;
     private float baseXpReward = 15f;
 
+    [Header("Juice (Números de daño)")]
+    [Tooltip("Prefab con DamageNumber (TextMeshPro en World Space). Si está vacío no se muestran números.")]
+    [SerializeField] private GameObject damageNumberPrefab;
+    [Tooltip("Altura sobre el objeto donde aparece el número flotante.")]
+    [SerializeField] private float damageNumberHeight = 1.5f;
+
+    [Header("Audio de Impacto (daño recibido)")]
+    [Tooltip("Sonido al recibir daño (ImapactEnemy.mp3). En el JUGADOR se reproduce en 2D y con " +
+             "prioridad: si se deja vacío se usa el impacto genérico del AudioManager.")]
+    [SerializeField] private AudioClip damageSFX;
+    [Range(0f, 1f)]
+    [Tooltip("Volumen del SFX de daño.")]
+    [SerializeField] private float damageSfxVolume = 0.6f;
+    [Range(0f, 0.2f)]
+    [Tooltip("Variación de tono (±) por impacto: evita la fatiga auditiva al golpear muchas veces.")]
+    [SerializeField] private float damageSfxPitchVariation = 0.08f;
+    [Tooltip("Tiempo mínimo (s) entre dos SFX de daño de ESTA instancia (0.08s). Evita que varios " +
+             "impactos a la vez (p. ej. un golpe en área sobre la horda) solapen el audio.")]
+    [SerializeField] private float damageSfxCooldown = 0.08f;
+    [Range(0f, 1f)]
+    [Tooltip("Volumen del golpe recibido por el JUGADOR (2D, sin atenuación: se oye siempre).")]
+    [SerializeField] private float playerDamageSfxVolume = 0.85f;
+
+    [Header("Audio de Daño del Jugador (variaciones)")]
+    [Tooltip("Variaciones del golpe recibido por el JUGADOR (SFX_DamagePlayer_01/02). En cada impacto " +
+             "se elige una al azar: si el array está vacío se usa 'Damage Sfx' y, si tampoco hay, " +
+             "la variación aleatoria del catálogo del AudioManager.")]
+    [SerializeField] private AudioClip[] playerDamageSFX;
+
     private Animator animator;
     private EnemyAI enemyAI;
     private float lastHitAnimationTime = -999f;
+
+    /// <summary>Última vez que ESTA instancia reprodujo su SFX de daño (cooldown anti-saturación).</summary>
+    private float lastDamageSfxTime = -999f;
+
+    /// <summary>
+    /// Frame en el que ESTA instancia mostró su último número de daño. Protección anti-duplicado:
+    /// si un mismo golpe invoca TakeDamage() dos veces dentro del mismo frame (Animation Event
+    /// repetido, evento + respaldo por tiempo o doble fuente de ataque), solo se instancia UN
+    /// texto flotante. Es un campo por instancia: varios enemigos golpeados en el mismo frame
+    /// (golpe en área) cada uno muestra su propio número.
+    /// </summary>
+    private int lastDamageNumberFrame = -1;
+
+    /// <summary>
+    /// True si quien recibe el daño es el jugador: su golpe se reproduce en 2D, sin atenuación y sin
+    /// cooldown, para que nunca se pierda en la mezcla. Se resuelve una sola vez en Awake.
+    /// </summary>
+    private bool isPlayerTarget;
 
     public event Action<float, float> OnHealthChanged;
     public event Action OnDeath;
@@ -41,6 +88,9 @@ public class HealthComponent : MonoBehaviour
     public float CurrentHealth => currentHealth;
     public float MaxHealth => maxHealth;
     public bool IsDead => isDead;
+
+    /// <summary>True si este HealthComponent pertenece al JUGADOR (se resuelve una sola vez en Awake).</summary>
+    public bool IsPlayerTarget => isPlayerTarget;
 
     private static readonly int HitHash = Animator.StringToHash("Hit");
 
@@ -61,6 +111,15 @@ public class HealthComponent : MonoBehaviour
             baseXpReward = enemyData.xpReward;
             xpReward = baseXpReward;
         }
+
+        // ¿Quién recibe el daño? Determina cómo se reproduce el SFX:
+        //  - Jugador  -> 2D prioritario (siempre audible, sin atenuación ni cooldown).
+        //  - Enemigos -> 3D posicional con cooldown por instancia (anti-saturación de horda).
+        // Se comprueba por etiqueta, por componente y por datos de personaje: así funciona aunque
+        // falte cualquiera de los tres (la etiqueta puede no estar guardada en la escena).
+        isPlayerTarget = gameObject.CompareTag("Player")
+            || GetComponent<PlayerController>() != null
+            || playerData != null;
 
         Initialize(baseMaxHealth);
     }
@@ -86,6 +145,12 @@ public class HealthComponent : MonoBehaviour
         }
 
         isDead = false;
+
+        // Instancia (re)activada: el SFX de daño puede volver a sonar de inmediato y el primer
+        // golpe tras el reciclaje siempre puede mostrar su número (aunque coincida con el frame
+        // en el que la instancia anterior fue devuelta al pool).
+        lastDamageSfxTime = -999f;
+        lastDamageNumberFrame = -1;
 
         OnHealthChanged?.Invoke(currentHealth, maxHealth);
     }
@@ -120,9 +185,49 @@ public class HealthComponent : MonoBehaviour
         // --- ANIMACIÓN DE IMPACTO (con protección anti-bloqueo) ---
         TryPlayHitAnimation();
 
+        // --- AUDIO DE IMPACTO (cooldown por instancia + variación de tono) ---
+        TryPlayDamageSfx();
+
+        // --- JUICE: número de daño flotante sobre la posición del impacto ---
+        SpawnDamageNumber(amount);
+
         if (currentHealth <= 0f)
         {
             Die();
+        }
+    }
+
+    /// <summary>
+    /// Muestra el número de daño flotante reciclándolo desde el pool (sin Instantiate/Destroy).
+    /// No hace nada si no hay prefab asignado: el combate funciona igual sin juice.
+    /// </summary>
+    private void SpawnDamageNumber(float amount)
+    {
+        if (damageNumberPrefab == null) return;
+
+        // Protección por frame: un mismo golpe no puede instanciar dos números en el mismo frame.
+        // Si TakeDamage() se invocara dos veces de forma simultánea (Animation Event duplicado,
+        // evento + respaldo del enemigo, multi-collider sin deduplicar, etc.), la segunda llamada
+        // sale aquí sin crear texto. Al ser por instancia, el daño en área a varios enemigos
+        // sigue mostrando un número por cada uno.
+        if (Time.frameCount == lastDamageNumberFrame) return;
+
+        lastDamageNumberFrame = Time.frameCount;
+
+        Vector3 spawnPosition = transform.position + Vector3.up * damageNumberHeight;
+        ObjectPoolManager pool = ObjectPoolManager.Instance;
+
+        GameObject numberObject = pool != null
+            ? pool.Spawn(damageNumberPrefab, spawnPosition, Quaternion.identity)
+            : Instantiate(damageNumberPrefab, spawnPosition, Quaternion.identity);
+
+        if (numberObject == null) return;
+
+        DamageNumber damageNumber = numberObject.GetComponentInChildren<DamageNumber>();
+
+        if (damageNumber != null)
+        {
+            damageNumber.Show(amount);
         }
     }
 
@@ -141,6 +246,80 @@ public class HealthComponent : MonoBehaviour
 
         lastHitAnimationTime = Time.time;
         animator.SetTrigger(HitHash);
+    }
+
+    /// <summary>
+    /// Reproduce el SFX de daño con una variación ligera de tono.
+    /// En el JUGADOR va en 2D y sin cooldown (feedback crítico); en los enemigos el cooldown
+    /// (0.08s) evita que varios impactos del mismo enemigo en el mismo frame, o un
+    /// golpe en área sobre la horda, solapen el mismo clip y saturen la mezcla.
+    /// Se usa Time.unscaledTime para que el audio no dependa del Time.timeScale (pausa/nivel).
+    /// </summary>
+    private void TryPlayDamageSfx()
+    {
+        AudioManager audio = AudioManager.Instance;
+
+        if (audio == null) return;
+
+        float now = Time.unscaledTime;
+
+        // Cooldown anti-saturación: se aplica SOLO a los enemigos (horda). El jugador
+        // recibe pocos golpes y su feedback nunca debe perderse en la mezcla.
+        if (!isPlayerTarget && now - lastDamageSfxTime < damageSfxCooldown) return;
+
+        lastDamageSfxTime = now;
+
+        if (isPlayerTarget)
+        {
+            // 2D y prioritario (sin filtros anti-saturación): el golpe recibido se oye siempre,
+            // esté donde esté la cámara y aunque los enemigos usen el mismo clip a la vez.
+            audio.PlayHitOnPlayer(ResolvePlayerDamageClip(audio), playerDamageSfxVolume, damageSfxPitchVariation);
+            return;
+        }
+
+        if (damageSFX == null) return;
+
+        audio.PlaySFXAtPosition(damageSFX, transform.position, damageSfxVolume, damageSfxPitchVariation);
+    }
+
+    /// <summary>
+    /// Clip del golpe recibido por el jugador, por orden de prioridad:
+    /// 1) una variación aleatoria de 'playerDamageSFX' (SFX_DamagePlayer_01/02),
+    /// 2) el clip único 'damageSFX' del Inspector,
+    /// 3) la variación aleatoria del catálogo del AudioManager,
+    /// 4) el impacto sintetizado del propio manager (audible sin depender de ningún asset).
+    /// </summary>
+    private AudioClip ResolvePlayerDamageClip(AudioManager audio)
+    {
+        AudioClip variation = GetRandomPlayerDamageClip();
+
+        if (variation != null) return variation;
+        if (damageSFX != null) return damageSFX;
+
+        AudioClip catalogClip = audio.GetPlayerDamageClip();
+
+        return catalogClip != null ? catalogClip : audio.GetFallbackImpactClip();
+    }
+
+    /// <summary>
+    /// Variación aleatoria del array de golpes del jugador. Empieza en un índice al azar y recorre el
+    /// array desde ahí, así se ignoran los huecos vacíos sin salir siempre con el mismo clip.
+    /// </summary>
+    private AudioClip GetRandomPlayerDamageClip()
+    {
+        if (playerDamageSFX == null || playerDamageSFX.Length == 0) return null;
+
+        // UnityEngine.Random explícito: este archivo importa System, donde también existe Random.
+        int startIndex = UnityEngine.Random.Range(0, playerDamageSFX.Length);
+
+        for (int i = 0; i < playerDamageSFX.Length; i++)
+        {
+            AudioClip candidate = playerDamageSFX[(startIndex + i) % playerDamageSFX.Length];
+
+            if (candidate != null) return candidate;
+        }
+
+        return null;
     }
 
     public void Heal(float amount)

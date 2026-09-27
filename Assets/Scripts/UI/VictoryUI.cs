@@ -409,6 +409,14 @@ public class VictoryUI : MonoBehaviour
             stateController.RequestRestart();
         }
 
+        // El AudioManager persiste entre escenas (DontDestroyOnLoad): sin devolverle la música de
+        // partida seguiría sonando la música de victoria al reiniciar.
+        AudioManager audio = AudioManager.Instance;
+        if (audio != null)
+        {
+            audio.RestorePlaylistMusic();
+        }
+
         Scene currentScene = SceneManager.GetActiveScene();
         Debug.Log($"[VictoryUI] Reiniciando la partida (escena '{currentScene.name}')…", this);
 

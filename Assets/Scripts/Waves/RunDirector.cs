@@ -282,6 +282,7 @@ public class RunDirector : MonoBehaviour
 
         if (IsNightRound)
         {
+            PlayNightStartSfx();
             OnNightWarning?.Invoke(CurrentRound);
             SpawnNightBoss(profile);
         }
@@ -297,6 +298,32 @@ public class RunDirector : MonoBehaviour
                 $"Escalado Vida x{profile.healthMultiplier:0.00} Daño x{profile.damageMultiplier:0.00} Vel x{profile.speedMultiplier:0.00}</color>",
                 this);
         }
+    }
+
+    /// <summary>
+    /// Aviso sonoro de inicio de noche (SFX_NightStart, 2D): suena en el mismo frame que el aviso
+    /// a la UI y el spawn del jefe, así el audio no se adelanta ni se retrasa.
+    /// </summary>
+    private void PlayNightStartSfx()
+    {
+        AudioManager audio = AudioManager.Instance;
+
+        if (audio == null) return;
+
+        audio.PlayNightStartSFX();
+    }
+
+    /// <summary>
+    /// Música de victoria (MUS_Victory) con fundido: sustituye a la playlist de la partida.
+    /// La derrota la dispara GameManager, que es quien lleva la secuencia de muerte.
+    /// </summary>
+    private void PlayVictoryMusic()
+    {
+        AudioManager audio = AudioManager.Instance;
+
+        if (audio == null) return;
+
+        audio.PlayVictoryMusic();
     }
 
     private void CompleteRound()
@@ -337,6 +364,8 @@ public class RunDirector : MonoBehaviour
         }
 
         if (!victory) return;
+
+        PlayVictoryMusic();
 
         GameStateController stateController = GameStateController.Instance;
         if (stateController != null)

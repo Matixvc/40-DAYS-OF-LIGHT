@@ -41,6 +41,16 @@ public class ObjectPoolManager : MonoBehaviour
     [SerializeField] private bool logPoolActivity = false;
     [SerializeField] private bool logWarnings = true;
 
+    /// <summary>
+    /// True mientras el manager se destruye (descarga de escena) o la aplicación se cierra.
+    /// Las comprobaciones del libro del pool siguen aplicándose, pero no se registran avisos:
+    /// la traza que aparecía en consola era justo ObjectPoolManager.OnDestroy -> ReleaseAll -> Despawn.
+    /// </summary>
+    private bool isShuttingDown;
+
+    /// <summary>Buffer reutilizado por ReleaseAll (cero asignaciones en cada reinicio de partida).</summary>
+    private readonly List<GameObject> releaseBuffer = new List<GameObject>();
+
     // Propietario permanente de cada instancia (nunca se borra hasta que la instancia muere).
     private readonly Dictionary<GameObject, PoolDefinition> poolByInstance = new Dictionary<GameObject, PoolDefinition>();
     private readonly Dictionary<GameObject, PoolDefinition> poolByPrefab = new Dictionary<GameObject, PoolDefinition>();
@@ -90,9 +100,18 @@ public class ObjectPoolManager : MonoBehaviour
         }
     }
 
+    private void OnApplicationQuit()
+    {
+        // Cierre del juego: el pool se va con la aplicación. No tiene sentido avisar de nada.
+        isShuttingDown = true;
+    }
+
     private void OnDestroy()
     {
         // Al descargar la escena dejamos el pool limpio: nada activo y sin referencias colgando.
+        // A partir de aquí tampoco se registran avisos: devolver instancias durante el cierre
+        // (fin de partida, recarga de escena o salida) es el comportamiento normal.
+        isShuttingDown = true;
         ReleaseAll();
 
         if (Instance == this)
@@ -227,6 +246,17 @@ public class ObjectPoolManager : MonoBehaviour
             return false;
         }
 
+        // Comprobación ESTRICTA previa a devolver la instancia (el warning de la traza
+        // OnDestroy -> ReleaseAll -> Despawn salía de aquí):
+        // si el libro del pool no la tiene como activa Y además ya está en el contenedor de
+        // inactivos (pool.available) o ya está desactivada, es una devolución REDUNDANTE
+        // (doble Despawn, ReleaseAll sobre algo ya devuelto, o el Finish() de un número de daño
+        // que el pool ya había recogido). No es un error: se ignora en silencio.
+        if (!pool.active.Contains(instance) && (pool.available.Contains(instance) || !instance.activeSelf))
+        {
+            return false;
+        }
+
         if (!pool.active.Remove(instance))
         {
             // Ya estaba devuelta: se ignora para no duplicar entradas en la lista de disponibles.
@@ -242,7 +272,7 @@ public class ObjectPoolManager : MonoBehaviour
 
         instance.SetActive(false);
 
-        if (poolRoot != null)
+        if (!isShuttingDown && poolRoot != null)
         {
             instance.transform.SetParent(poolRoot, false);
         }
@@ -260,12 +290,32 @@ public class ObjectPoolManager : MonoBehaviour
     /// <summary>Devuelve al pool TODAS las instancias activas (reinicio de partida o cambio de escena).</summary>
     public void ReleaseAll()
     {
-        List<GameObject> instances = new List<GameObject>(poolByInstance.Keys);
+        // Se recorre el registro de instancias REALMENTE activas (pool.active) y no
+        // poolByInstance: este último conserva el propietario de cada instancia para siempre
+        // (es el que permite saber a qué pool devolverla), así que recorrerlo incluía las ya
+        // devueltas y disparaba el warning "ya estaba en el pool (doble devolución ignorada)"
+        // durante OnDestroy.
+        releaseBuffer.Clear();
 
-        for (int i = 0; i < instances.Count; i++)
+        for (int i = 0; i < pools.Count; i++)
         {
-            Despawn(instances[i]); // Ignora los que ya estaban devueltos
+            PoolDefinition pool = pools[i];
+
+            if (pool == null || pool.active == null) continue;
+
+            // Primero se recopila: Despawn() modifica pool.active y no se puede recorrer mutándolo.
+            foreach (GameObject instance in pool.active)
+            {
+                releaseBuffer.Add(instance);
+            }
         }
+
+        for (int i = 0; i < releaseBuffer.Count; i++)
+        {
+            Despawn(releaseBuffer[i]); // Los que ya estuvieran devueltos se ignoran
+        }
+
+        releaseBuffer.Clear();
     }
 
     public int GetAvailableCount(GameObject prefab)
