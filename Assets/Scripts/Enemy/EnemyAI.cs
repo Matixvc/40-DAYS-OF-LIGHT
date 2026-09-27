@@ -99,6 +99,14 @@ public class EnemyAI : MonoBehaviour, IPooledObject
         baseScale = transform.localScale;
     }
 
+    private void OnEnable()
+    {
+        // Reasegura flags y componentes al activarse (spawn del pool o reinicio de escena):
+        // un enemigo que quedó congelado por el GameOver anterior nunca puede aparecer estático.
+        // Awake ya ejecutó en este punto, así que agent/animator están cacheados.
+        ResetEnemyState();
+    }
+
     private void Start()
     {
         if (enemyData == null)
@@ -188,6 +196,41 @@ public class EnemyAI : MonoBehaviour, IPooledObject
             // Congelar también la animación: deja al enemigo completamente quieto (ni caminar ni atacar).
             animator.SetBool(IsMovingHash, false);
             animator.speed = value ? 0f : 1f;
+        }
+    }
+
+    /// <summary>
+    /// Devuelve al enemigo a un estado operativo limpio: descongela (isFrozen = false), habilita
+    /// nuevamente el NavMeshAgent, reactiva la animación y limpia los flags de ataque
+    /// (isAttacking, attackHitResolved, timers). Lo llaman OnEnable() y el reinicio de partida
+    /// para que ningún enemigo se quede estático o "congelado" tras un GameOver.
+    /// </summary>
+    public void ResetEnemyState()
+    {
+        isFrozen = false;
+        isAttacking = false;
+        attackHitResolved = false;
+        attackSafetyTimer = 0f;
+        lastAttackTime = 0f;
+
+        if (animator != null && animator.speed <= 0f)
+        {
+            animator.speed = 1f;
+        }
+
+        if (agent != null)
+        {
+            // Se re-habilita por completo: durante la secuencia de muerte pudo quedar detenido.
+            if (!agent.enabled)
+            {
+                agent.enabled = true;
+            }
+
+            if (agent.isOnNavMesh)
+            {
+                agent.isStopped = false;
+                agent.velocity = Vector3.zero;
+            }
         }
     }
 

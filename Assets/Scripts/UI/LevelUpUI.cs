@@ -31,6 +31,9 @@ public class LevelUpUI : MonoBehaviour
     private Coroutine activeCoroutine;
     private bool isVisible;
 
+    /// <summary>Evita repetir el aviso de "falta UpgradeManager" en cada llamada a ResolveUpgradeManager().</summary>
+    private bool missingUpgradeManagerWarned;
+
     /// <summary>True mientras el panel está desplegado o animándose.</summary>
     public bool IsVisible => isVisible;
 
@@ -49,9 +52,37 @@ public class LevelUpUI : MonoBehaviour
             upgradeCards = GetComponentsInChildren<UpgradeCardUI>(true);
         }
 
+        // Auto-resolución: si el Inspector quedó vacío se busca el UpgradeManager en escena
+        // para evitar el error "No hay UpgradeManager asignado" al elegir una mejora.
+        ResolveUpgradeManager();
+
         // Ocultar de inmediato al arrancar sin desactivar el GameObject
         HidePanelInstant();
         HideAllCards();
+    }
+
+    /// <summary>
+    /// Busca el UpgradeManager en escena si el campo sigue vacío (Inspector sin asignar
+    /// o manager instanciado en runtime). Se llama en Awake y de nuevo al poblar las cartas.
+    /// </summary>
+    /// <returns>El UpgradeManager resuelto (null si no existe en escena).</returns>
+    private UpgradeManager ResolveUpgradeManager()
+    {
+        if (upgradeManager != null) return upgradeManager;
+
+        upgradeManager = FindAnyObjectByType<UpgradeManager>();
+
+        if (upgradeManager == null && !missingUpgradeManagerWarned)
+        {
+            // Una sola advertencia por sesión: el método se llama en Awake y en cada reparto de cartas.
+            missingUpgradeManagerWarned = true;
+            Debug.LogWarning(
+                "[LevelUpUI] No hay UpgradeManager en la escena: las mejoras seleccionadas no se aplicarán. " +
+                "Añade el componente UpgradeManager a un objeto de la escena.",
+                this);
+        }
+
+        return upgradeManager;
     }
 
     /// <summary>Limpia las cartas para que no queden datos de una selección anterior.</summary>
@@ -156,7 +187,7 @@ public class LevelUpUI : MonoBehaviour
             UpgradeDataSO selectedSO = pool[randomIndex];
             pool.RemoveAt(randomIndex); // Evita duplicados en la misma selección
 
-            upgradeCards[i].SetupCard(selectedSO, this, upgradeManager);
+            upgradeCards[i].SetupCard(selectedSO, this, ResolveUpgradeManager());
             usedCards++;
         }
 

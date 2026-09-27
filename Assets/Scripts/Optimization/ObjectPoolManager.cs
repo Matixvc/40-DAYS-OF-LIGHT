@@ -79,8 +79,14 @@ public class ObjectPoolManager : MonoBehaviour
     {
         if (Instance != null && Instance != this)
         {
-            Debug.LogWarning("[ObjectPool] Ya existe un ObjectPoolManager activo: se desactiva el duplicado.", this);
+            Debug.LogWarning(
+                "[ObjectPool] Ya existe un ObjectPoolManager activo: se destruye el duplicado (con sus pools) sin tocar el original.",
+                this);
+            // Desactivar ANTES de destruir: Start() no hará prewarm sobre un duplicado.
+            // Destroy(this) no ejecuta ReleaseAll sobre instancias ajenas: el duplicado nunca
+            // construyó su índice, así que sus listas están vacías.
             enabled = false;
+            Destroy(this);
             return;
         }
 

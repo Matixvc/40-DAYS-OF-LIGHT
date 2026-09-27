@@ -54,6 +54,15 @@ public class EnemySpawner : MonoBehaviour
         currentMaxEnemies = initialMaxEnemies;
         nextSpawnTime = Time.time + currentSpawnInterval;
 
+        // Reinicio limpio: si este spawner sobrevive a una recarga o reactivación, nunca debe
+        // heredar el flag 'spawningEnabled = false' del GameOver anterior.
+        spawningEnabled = true;
+        currentRound = 1;
+
+        // Limpieza de listas residuales (entradas muertas de una partida anterior).
+        trackedEnemies.RemoveWhere(h => h == null);
+        aliveEnemiesCount = trackedEnemies.Count;
+
         // Búsqueda automática del jugador si no se asignó en el Inspector
         if (playerTransform == null)
         {
@@ -63,6 +72,13 @@ public class EnemySpawner : MonoBehaviour
                 playerTransform = player.transform;
             }
         }
+    }
+
+    private void OnEnable()
+    {
+        // Reasegura el arranque del spawn al activarse el objeto: el flag nunca puede quedar
+        // en false por una partida anterior (el RunDirector lo volverá a ajustar si hace falta).
+        spawningEnabled = true;
     }
 
     private void Update()

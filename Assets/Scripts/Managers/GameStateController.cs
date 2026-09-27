@@ -54,9 +54,12 @@ public class GameStateController : MonoBehaviour
         if (Instance != null && Instance != this)
         {
             Debug.LogWarning(
-                "[GameStateController] Ya existe una instancia activa. Se desactiva el duplicado.",
+                "[GameStateController] Ya existe una instancia activa. Se destruye el duplicado sin tocar el estado global.",
                 this);
+            // Desactivar ANTES de destruir evita que Start() ejecute ApplyState() con un
+            // timeScale propio (estado colgado). La destrucción es diferida al final del frame.
             enabled = false;
+            Destroy(this);
             return;
         }
 

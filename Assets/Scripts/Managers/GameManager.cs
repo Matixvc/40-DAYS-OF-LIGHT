@@ -201,9 +201,19 @@ public class GameManager : MonoBehaviour
 
         isGameOver = true;
 
+        // Red de seguridad: si el Inspector quedó vacío (o el objeto se instanció en runtime),
+        // se resuelve AQUÍ la referencia al jugador para que PlayDeathSequence() → Trigger 'Die'
+        // se ejecute siempre y no aparezca el warning de referencia no asignada.
+        if (playerController == null || playerAttack == null)
+        {
+            ResolvePlayerReferences();
+        }
+
         // Preparar el texto ANTES de todo: la UI lo mostrará al entrar en GameOver.
         UpdateGameOverStatsText();
 
+        // NOTA: Time.timeScale NO se toca aquí. La corrutina corre en tiempo REAL mientras la
+        // animación de muerte y la música de derrota se reproducen; el congelado ocurre al final.
         StartCoroutine(GameOverSequenceRoutine());
     }
 
@@ -413,6 +423,10 @@ public class GameManager : MonoBehaviour
 
         // El AudioManager persiste entre escenas: hay que devolverle la música de partida.
         RestoreGameplayMusic();
+
+        // PRIORIDAD: devolver el control del tiempo ANTES de resetear estados o recargar la escena.
+        // Si la escena tardara en cargar (o algo fallara), el juego nunca quedaría congelado.
+        Time.timeScale = 1f;
 
         // Devolver el control del tiempo al estado de juego antes de recargar la escena.
         GameStateController stateController = GameStateController.Instance;

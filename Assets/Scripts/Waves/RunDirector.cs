@@ -136,8 +136,13 @@ public class RunDirector : MonoBehaviour
     {
         if (Instance != null && Instance != this)
         {
-            Debug.LogWarning("[RunDirector] Ya existe una instancia activa. Se desactiva el duplicado.", this);
+            Debug.LogWarning(
+                "[RunDirector] Ya existe una instancia activa. Se destruye el duplicado sin tocar el estado de la partida.",
+                this);
+            // Desactivar ANTES de destruir evita que Start() se suscriba a OnStateChanged
+            // o autoinicie una segunda ronda (estado colgado del duplicado).
             enabled = false;
+            Destroy(this);
             return;
         }
 

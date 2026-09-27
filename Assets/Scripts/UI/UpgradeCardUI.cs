@@ -25,6 +25,27 @@ public class UpgradeCardUI : MonoBehaviour
 
     public UpgradeDataSO CurrentData => currentData;
 
+    private void Awake()
+    {
+        // Si LevelUpUI nos pasa un manager nulo (Inspector sin asignar) se resuelve aquí mismo:
+        // evita el error "No hay UpgradeManager asignado" al pulsar la carta.
+        ResolveUpgradeManager();
+    }
+
+    /// <summary>
+    /// Auto-resuelve el UpgradeManager si sigue a null. Se usa en Awake, en SetupCard
+    /// (por si LevelUpUI envía null) y antes de aplicar la mejora como último respaldo.
+    /// </summary>
+    private UpgradeManager ResolveUpgradeManager()
+    {
+        if (upgradeManager == null)
+        {
+            upgradeManager = FindAnyObjectByType<UpgradeManager>();
+        }
+
+        return upgradeManager;
+    }
+
     /// <summary>
     /// Rellena la carta con una mejora concreta y prepara su botón.
     /// </summary>
@@ -34,6 +55,9 @@ public class UpgradeCardUI : MonoBehaviour
         mainUI = ui;
         upgradeManager = manager;
         alreadyApplied = false;
+
+        // Respaldo: si el nivel no pudo resolver el manager, lo intenta la propia carta.
+        ResolveUpgradeManager();
 
         gameObject.SetActive(true);
 
@@ -88,6 +112,9 @@ public class UpgradeCardUI : MonoBehaviour
 
         if (currentData != null)
         {
+            // Último respaldo antes de aplicar: por si el manager apareció en escena después del Awake.
+            ResolveUpgradeManager();
+
             if (upgradeManager != null)
             {
                 upgradeManager.ApplyUpgrade(currentData);
