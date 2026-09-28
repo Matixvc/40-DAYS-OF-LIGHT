@@ -371,6 +371,12 @@ MonoBehaviour:
   - {fileID: 11400000, guid: a41cd3e760999d24ca9c121293081adf, type: 2}
   - {fileID: 11400000, guid: 946f964909c3bd448a5a5bfa995d3a4c, type: 2}
   - {fileID: 11400000, guid: 2913544a695d161498d37f16da16dbe4, type: 2}
+  - {fileID: 11400000, guid: 74eecc89659c3754e82de58a3e038035, type: 2}
+  - {fileID: 11400000, guid: 6e55ff7d792382c4f852038c7c6d75b2, type: 2}
+  - {fileID: 11400000, guid: 54cce96acbe9e0e48a98da1befc5f1b7, type: 2}
+  - {fileID: 11400000, guid: 53382b1af17feb246810fa59bb0a4ed1, type: 2}
+  - {fileID: 11400000, guid: 5fe77e9c8b246424197a7f728fa74d87, type: 2}
+  - {fileID: 11400000, guid: fd53dbe1e79ca1045816e5b042646af3, type: 2}
   upgradeCards:
   - {fileID: 1768405312}
   - {fileID: 1718343554}
@@ -4401,6 +4407,8 @@ GameObject:
   - component: {fileID: 677101673}
   - component: {fileID: 677101672}
   - component: {fileID: 677101671}
+  - component: {fileID: 677101674}
+  - component: {fileID: 677101675}
   m_Layer: 0
   m_Name: Managers
   m_TagString: Untagged
@@ -4500,6 +4508,7 @@ MonoBehaviour:
   m_Name: 
   m_EditorClassIdentifier: Assembly-CSharp::PerformanceBootstrap
   targetFrameRate: 60
+  disableVSync: 1
   disableVSyncOnMobile: 1
   mobileQualityLevel: -1
   disableRealtimeShadowsOnMobile: 0
@@ -4645,6 +4654,53 @@ MonoBehaviour:
   nightContrast: 4
   nightSaturation: -6
   logTransitions: 1
+--- !u!114 &677101674
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 677101665}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: b573197196d28ba4da270ef22b103940, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: Assembly-CSharp::HitStopManager
+  defaultDuration: 0.04
+  maxDuration: 0.15
+  hitStopTimeScale: 0.05
+  minIntervalBetweenStops: 0.06
+  logHitStops: 0
+--- !u!114 &677101675
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 677101665}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: b8f4d9cb41bbbdd4aadfa0787c310fb1, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: Assembly-CSharp::RunWeaponFlow
+  levelUpUI: {fileID: 13774412}
+  runDirector: {fileID: 677101668}
+  enemySpawner: {fileID: 1002961072}
+  weaponController: {fileID: 1062963165}
+  enableStartingWeaponChoice: 1
+  startingWeaponUpgrades:
+  - {fileID: 11400000, guid: 6db567aef858a5b4b8ef9d1e000a44a4, type: 2}
+  - {fileID: 11400000, guid: d97c2593eda3e4444a8ac848cec11211, type: 2}
+  - {fileID: 11400000, guid: 1a8d34e6685aa2749b5c550ab7fa066c, type: 2}
+  - {fileID: 11400000, guid: 51aa63dcbb4774f4c86be4095ba76065, type: 2}
+  pauseSpawnerDuringChoice: 1
+  enableBossReward: 1
+  bossRewardUpgrades:
+  - {fileID: 11400000, guid: b1e68495b43db024eac105ec92377f08, type: 2}
+  - {fileID: 11400000, guid: 8c205d0363117f7449f249b9cc54a22a, type: 2}
+  - {fileID: 11400000, guid: 537e0e4f469c5f747911944ccc2cec22, type: 2}
+  - {fileID: 11400000, guid: f4026aafd93967d4190a382642a78382, type: 2}
+  logFlow: 1
 --- !u!1 &716738953
 GameObject:
   m_ObjectHideFlags: 0
@@ -6165,6 +6221,32 @@ MonoBehaviour:
   earlyBurstSize: 1
   burstRoundsStart: 10
   lateBurstSize: 3
+  useWavePhases: 1
+  wavePhases:
+  - phase: 0
+    intervalMultiplier: 1
+    burstSize: 1
+    maxEnemiesFactor: 0.7
+    startAt: 0
+    endAt: 0.2
+  - phase: 1
+    intervalMultiplier: 0.65
+    burstSize: 2
+    maxEnemiesFactor: 0.9
+    startAt: 0.2
+    endAt: 0.55
+  - phase: 2
+    intervalMultiplier: 0.35
+    burstSize: 3
+    maxEnemiesFactor: 1
+    startAt: 0.55
+    endAt: 0.8
+  - phase: 3
+    intervalMultiplier: 1.8
+    burstSize: 1
+    maxEnemiesFactor: 0.55
+    startAt: 0.8
+    endAt: 1
   logSpawnScaling: 1
 --- !u!4 &1002961073
 Transform:
@@ -6590,6 +6672,9 @@ PrefabInstance:
     - targetCorrespondingSourceObject: {fileID: 919132149155446097, guid: 99337cf7c10c21d408197dbed34c8dd8, type: 3}
       insertIndex: -1
       addedObject: {fileID: 1062963164}
+    - targetCorrespondingSourceObject: {fileID: 919132149155446097, guid: 99337cf7c10c21d408197dbed34c8dd8, type: 3}
+      insertIndex: -1
+      addedObject: {fileID: 1062963165}
   m_SourcePrefab: {fileID: 100100000, guid: 99337cf7c10c21d408197dbed34c8dd8, type: 3}
 --- !u!1 &1062963150 stripped
 GameObject:
@@ -6670,9 +6755,13 @@ MonoBehaviour:
   avoidInterruptingAttacks: 1
   destroyOnDeath: 1
   destroyDelay: 0.05
+  flatDamageReduction: 0
+  refillOnMaxHealthIncrease: 1
   xpGemPrefab: {fileID: 0}
   damageNumberPrefab: {fileID: 0}
   damageNumberHeight: 1.5
+  hitStopOnEnemyDeath: 0.04
+  hitStopOnPlayerHit: 0.06
   damageSFX: {fileID: 8300000, guid: 19be6ceb88c4a49448520935dec8e279, type: 3}
   damageSfxVolume: 0.6
   damageSfxPitchVariation: 0.08
@@ -6703,6 +6792,7 @@ MonoBehaviour:
   attackPastorSFX: {fileID: 8300000, guid: 85fa543cf9110e446a046269ffd98c44, type: 3}
   shakeDuration: 0.12
   shakeMagnitude: 0.15
+  hitStopDuration: 0.04
 --- !u!114 &1062963158
 MonoBehaviour:
   m_ObjectHideFlags: 0
@@ -6753,6 +6843,8 @@ MonoBehaviour:
   m_EditorClassIdentifier: Assembly-CSharp::RunStats
   characterData: {fileID: 11400000, guid: 8149d95018c91244eb7f9664cca52f4e, type: 2}
   weaponData: {fileID: 11400000, guid: b8c546d52914924419249ba1f042d245, type: 2}
+  baseCritChance: 0
+  baseCritMultiplier: 1.5
   logChanges: 1
 --- !u!114 &1062963164
 MonoBehaviour:
@@ -6776,6 +6868,29 @@ MonoBehaviour:
   pauseActionName: Player/Pause
   restartActionName: Player/Restart
   logInputSetup: 1
+--- !u!114 &1062963165
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 1062963150}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 0276899d93ea82c48b1ab5a343637636, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: Assembly-CSharp::WeaponController
+  runStats: {fileID: 1062963162}
+  legacyPulse: {fileID: 1062963157}
+  useNewWeaponSystem: 0
+  startingWeapons: []
+  maxWeaponSlots: 4
+  damagePerWeaponLevel: 0.15
+  cooldownReductionPerWeaponLevel: 0.06
+  enemyLayer:
+    serializedVersion: 2
+    m_Bits: 256
+  logWeapons: 1
 --- !u!1 &1103875144
 GameObject:
   m_ObjectHideFlags: 0
@@ -7924,6 +8039,7 @@ MonoBehaviour:
   m_EditorClassIdentifier: Assembly-CSharp::UpgradeManager
   runStats: {fileID: 1062963162}
   playerHealth: {fileID: 1062963156}
+  weaponController: {fileID: 1062963165}
   logUpgrades: 1
 --- !u!1 &1346224296
 GameObject:
@@ -10850,6 +10966,7 @@ RectTransform:
   m_LocalScale: {x: 0, y: 0, z: 0}
   m_ConstrainProportionsScale: 0
   m_Children:
+  - {fileID: 1807420986}
   - {fileID: 509740347}
   - {fileID: 1323005699}
   - {fileID: 1346224297}
@@ -10954,6 +11071,104 @@ RectTransform:
   m_AnchoredPosition: {x: 0, y: 0}
   m_SizeDelta: {x: 0, y: 0}
   m_Pivot: {x: 0, y: 0}
+--- !u!1 &1807420985
+GameObject:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  serializedVersion: 6
+  m_Component:
+  - component: {fileID: 1807420986}
+  - component: {fileID: 1807420989}
+  - component: {fileID: 1807420988}
+  - component: {fileID: 1807420987}
+  m_Layer: 0
+  m_Name: DamageVignette
+  m_TagString: Untagged
+  m_Icon: {fileID: 0}
+  m_NavMeshLayer: 0
+  m_StaticEditorFlags: 0
+  m_IsActive: 1
+--- !u!224 &1807420986
+RectTransform:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 1807420985}
+  m_LocalRotation: {x: 0, y: 0, z: 0, w: 1}
+  m_LocalPosition: {x: 0, y: 0, z: 0}
+  m_LocalScale: {x: 1, y: 1, z: 1}
+  m_ConstrainProportionsScale: 0
+  m_Children: []
+  m_Father: {fileID: 1775404367}
+  m_LocalEulerAnglesHint: {x: 0, y: 0, z: 0}
+  m_AnchorMin: {x: 0, y: 0}
+  m_AnchorMax: {x: 1, y: 1}
+  m_AnchoredPosition: {x: 0, y: 0}
+  m_SizeDelta: {x: 0, y: 0}
+  m_Pivot: {x: 0.5, y: 0.5}
+--- !u!114 &1807420987
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 1807420985}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: b4637cbd2d791ea48bab9eef55f0a957, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: Assembly-CSharp::DamageVignetteUI
+  targetHealth: {fileID: 1062963156}
+  vignetteImage: {fileID: 1807420988}
+  flashAlpha: 0.55
+  flashDuration: 0.35
+  flashColor: {r: 0.85, g: 0.05, b: 0.05, a: 1}
+  lowHealthThreshold: 0.35
+  lowHealthAlpha: 0.22
+  lowHealthPulsePeriod: 1.4
+  lowHealthColor: {r: 0.6, g: 0.02, b: 0.02, a: 1}
+  logMissingReferences: 1
+--- !u!114 &1807420988
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 1807420985}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: fe87c0e1cc204ed48ad3b37840f39efc, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: UnityEngine.UI::UnityEngine.UI.Image
+  m_Material: {fileID: 0}
+  m_Color: {r: 0, g: 0, b: 0, a: 0}
+  m_RaycastTarget: 0
+  m_RaycastPadding: {x: 0, y: 0, z: 0, w: 0}
+  m_Maskable: 1
+  m_OnCullStateChanged:
+    m_PersistentCalls:
+      m_Calls: []
+  m_Sprite: {fileID: 21300000, guid: d0cd6b9acaa7765478ce84630de9fce5, type: 3}
+  m_Type: 0
+  m_PreserveAspect: 0
+  m_FillCenter: 1
+  m_FillMethod: 4
+  m_FillAmount: 1
+  m_FillClockwise: 1
+  m_FillOrigin: 0
+  m_UseSpriteMesh: 0
+  m_PixelsPerUnitMultiplier: 1
+--- !u!222 &1807420989
+CanvasRenderer:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 1807420985}
+  m_CullTransparentMesh: 1
 --- !u!1 &1840386048
 GameObject:
   m_ObjectHideFlags: 0

@@ -1,5 +1,53 @@
+using System;
 using UnityEngine;
 using UnityEngine.AI;
+
+// System.Random también existe: el alias resuelve la ambigüedad CS0104 y deja
+// las llamadas como Random.Range(), que es la forma que usa el resto del proyecto.
+using Random = UnityEngine.Random;
+
+/// <summary>
+/// Fase de la ola dentro de una ronda. Sustituye al ritmo plano: una ronda ya no es
+/// "enemigos cada X segundos" de principio a fin, sino una curva de tensión con descansos.
+///
+/// El ritmo por sí solo no genera tensión: lo que la genera es el CONTRASTE entre un pico
+/// de presión y un respiro. Una horda constante e infinita solo produce cansancio; el
+/// "Surge" seguido del "Breather" es lo que produce alivio... y, por tanto, ganas de volver.
+/// </summary>
+public enum SpawnPhase
+{
+    Calm,      // Entrada suave: el jugador-orienta, todavía sin presión.
+    Tension,   // La horda se acerca: aviso de que viene algo peor.
+    Surge,     // Pico de presión: ráfagas grandes, cadencia rápida.
+    Breather   // Descanso: la horda se adelgaza sola si el jugador mantiene la distancia.
+}
+
+/// <summary>
+/// Un tramo de la ronda con su propio ritmo. Todos los valores son MULTIPLICADORES sobre
+/// el intervalo y el tope de enemigos que ya calculó <see cref="EnemySpawner.ApplyRoundSettings"/>,
+/// así que la curva de 40 días sigue mandando: las fases solo dan forma dentro de cada ronda.
+/// </summary>
+[Serializable]
+public struct SpawnWave
+{
+    [Tooltip("Fase que representa este tramo.")]
+    public SpawnPhase phase;
+
+    [Tooltip("Multiplicador del intervalo de spawn. >1 = más lento, <1 = más rápido.")]
+    [Range(0.1f, 3f)] public float intervalMultiplier;
+
+    [Tooltip("Enemigos generados por ciclo en este tramo.")]
+    [Min(1)] public int burstSize;
+
+    [Tooltip("Multiplicador del tope de enemigos simultáneos. El 'Breather' lo baja para que la horda se limpie sola.")]
+    [Range(0.3f, 1f)] public float maxEnemiesFactor;
+
+    [Tooltip("Inicio del tramo, en fracción de la ronda (0 = 0%, 1 = 100%).")]
+    [Range(0f, 1f)] public float startAt;
+
+    [Tooltip("Fin del tramo, en fracción de la ronda.")]
+    [Range(0f, 1f)] public float endAt;
+}
 
 public class EnemySpawner : MonoBehaviour
 {
@@ -33,8 +81,45 @@ public class EnemySpawner : MonoBehaviour
     [Tooltip("Enemigos generados por ciclo en rondas avanzadas (respetando el límite de enemigos).")]
     [SerializeField] private int lateBurstSize = 3;
 
+    [Header("Curva de la Ola (fases de tensión y descanso)")]
+    [Tooltip("Activa la máquina de fases. Desactivado, la ronda usa el ritmo plano heredado.")]
+    [SerializeField] private bool useWavePhases = true;
+
+    [Tooltip("Tramos de la ronda, en orden. El primero empieza en 0 y el último termina en 1.\n" +
+             "Calm: entrada suave | Tension: aviso | Surge: pico de presión | Breather: descanso.")]
+    [SerializeField] private SpawnWave[] wavePhases = DefaultWaves();
+
     [Header("Depuración")]
     [SerializeField] private bool logSpawnScaling = true;
+
+    /// <summary>Reloj propio de la ronda: se reinicia en cada <see cref="ApplyRoundSettings"/>.</summary>
+    private float roundElapsed;
+
+    /// <summary>Duración de la ronda en curso, la pasa el RunDirector. 0 = ritmo plano heredado.</summary>
+    private float roundDuration;
+
+    private SpawnPhase currentPhase = SpawnPhase.Calm;
+    private bool hasEvaluatedPhase;
+
+    /// <summary>Se lanza al cambiar de fase dentro de una ronda. El HUD o el audio pueden reaccionar.</summary>
+    public event Action<SpawnPhase> OnPhaseChanged;
+
+    public SpawnPhase CurrentPhase => currentPhase;
+
+    /// <summary>Progreso de la ronda en curso (0..1). 0 si la duración aún no es conocida.</summary>
+    public float RoundProgress => roundDuration > 0.01f ? Mathf.Clamp01(roundElapsed / roundDuration) : 0f;
+
+    /// <summary>Tramos por defecto: la curva de tensión de cuatro tiempos del diseño original.</summary>
+    private static SpawnWave[] DefaultWaves()
+    {
+        return new[]
+        {
+            new SpawnWave { phase = SpawnPhase.Calm,     intervalMultiplier = 1.00f, burstSize = 1, maxEnemiesFactor = 0.70f, startAt = 0.00f, endAt = 0.20f },
+            new SpawnWave { phase = SpawnPhase.Tension,  intervalMultiplier = 0.65f, burstSize = 2, maxEnemiesFactor = 0.90f, startAt = 0.20f, endAt = 0.55f },
+            new SpawnWave { phase = SpawnPhase.Surge,    intervalMultiplier = 0.35f, burstSize = 3, maxEnemiesFactor = 1.00f, startAt = 0.55f, endAt = 0.80f },
+            new SpawnWave { phase = SpawnPhase.Breather, intervalMultiplier = 1.80f, burstSize = 1, maxEnemiesFactor = 0.55f, startAt = 0.80f, endAt = 1.00f },
+        };
+    }
 
     private float currentSpawnInterval;
     private int currentMaxEnemies;
@@ -58,6 +143,13 @@ public class EnemySpawner : MonoBehaviour
         // heredar el flag 'spawningEnabled = false' del GameOver anterior.
         spawningEnabled = true;
         currentRound = 1;
+
+        // El reloj de la ronda arranca limpio. Con roundDuration = 0 el spawner usa el
+        // ritmo plano heredado hasta que el RunDirector pase la duración real.
+        roundElapsed = 0f;
+        roundDuration = 0f;
+        currentPhase = SpawnPhase.Calm;
+        hasEvaluatedPhase = false;
 
         // Limpieza de listas residuales (entradas muertas de una partida anterior).
         trackedEnemies.RemoveWhere(h => h == null);
@@ -90,27 +182,106 @@ public class EnemySpawner : MonoBehaviour
         GameStateController stateController = GameStateController.Instance;
         if (stateController != null && !stateController.IsPlaying) return;
 
-        // Spawn continuo según el intervalo actual de la ronda
+        // El reloj de la ronda avanza con tiempo ESCALADO: la micro-pausa de impacto (0.04s)
+        // no debe retrasar la curva de la ola, solo el movimiento de los enemigos.
+        if (roundDuration > 0.01f)
+        {
+            roundElapsed += Time.deltaTime;
+        }
+
+        SpawnWave wave = EvaluateCurrentWave();
+
         if (Time.time >= nextSpawnTime)
         {
             // Cero GC: usa el pool o el contador interno en lugar de FindGameObjectsWithTag.
             int aliveEnemies = GetAliveEnemiesCount();
-            int freeSlots = currentMaxEnemies - aliveEnemies;
 
-            // Spawn en ráfaga: en rondas avanzadas se generan varios enemigos por ciclo si hay hueco.
-            int burstSize = currentRound >= burstRoundsStart ? lateBurstSize : earlyBurstSize;
-            int spawnAttempts = Mathf.Clamp(Mathf.Min(freeSlots, burstSize), 0, Mathf.Max(0, burstSize));
+            // El tope de la ronda se modula por fase: en el 'Breather' baja para que la horda
+            // se limpie sola sin que el jugador tenga que hacer nada.
+            int maxEnemiesThisCycle = Mathf.Max(
+                1,
+                Mathf.RoundToInt(currentMaxEnemies * (useWavePhases ? wave.maxEnemiesFactor : 1f)));
 
-            for (int i = 0; i < spawnAttempts; i++)
+            int freeSlots = maxEnemiesThisCycle - aliveEnemies;
+
+            if (freeSlots > 0)
             {
-                if (!TrySpawnEnemyOnNavMesh())
+                // La ráfaga sale de la fase si las fases están activas; si no, del ritmo
+                // heredado por ronda (días avanzados).
+                int baseBurstSize = currentRound >= burstRoundsStart ? lateBurstSize : earlyBurstSize;
+                int burstSize = useWavePhases ? Mathf.Max(1, wave.burstSize) : baseBurstSize;
+                int spawnAttempts = Mathf.Clamp(Mathf.Min(freeSlots, burstSize), 0, Mathf.Max(0, burstSize));
+
+                for (int i = 0; i < spawnAttempts; i++)
                 {
-                    break; // Sin posición válida sobre el NavMesh en este ciclo
+                    if (!TrySpawnEnemyOnNavMesh())
+                    {
+                        break; // Sin posición válida sobre el NavMesh en este ciclo
+                    }
                 }
             }
 
-            nextSpawnTime = Time.time + currentSpawnInterval;
+            // El intervalo efectivo también lo modula la fase: el 'Surge' acelera la cadencia
+            // y el 'Breather' la relaja, sin tocar el valor base de la ronda.
+            float intervalMultiplier = useWavePhases ? wave.intervalMultiplier : 1f;
+            nextSpawnTime = Time.time + (currentSpawnInterval * Mathf.Max(0.05f, intervalMultiplier));
         }
+    }
+
+    /// <summary>
+    /// Tramo de la ola que corresponde al progreso actual de la ronda.
+    /// Si las fases están desactivadas o no hay duración conocida, devuelve un tramo neutro
+    /// (multiplicador 1) que deja el ritmo heredado intacto.
+    /// </summary>
+    private SpawnWave EvaluateCurrentWave()
+    {
+        SpawnWave neutral = new SpawnWave
+        {
+            phase = SpawnPhase.Calm,
+            intervalMultiplier = 1f,
+            burstSize = 1,
+            maxEnemiesFactor = 1f,
+            startAt = 0f,
+            endAt = 1f
+        };
+
+        if (!useWavePhases || wavePhases == null || wavePhases.Length == 0 || roundDuration <= 0.01f)
+        {
+            return neutral;
+        }
+
+        float progress = RoundProgress;
+
+        // El último tramo que contenga el progreso gana. Así, si el usuario deja huecos entre
+        // tramos en el Inspector, el progreso cae en el tramo anterior en vez de neutralizarse.
+        SpawnWave result = neutral;
+
+        for (int i = 0; i < wavePhases.Length; i++)
+        {
+            SpawnWave wave = wavePhases[i];
+
+            if (progress >= wave.startAt && progress < wave.endAt)
+            {
+                result = wave;
+            }
+        }
+
+        if (result.phase != currentPhase || !hasEvaluatedPhase)
+        {
+            currentPhase = result.phase;
+            hasEvaluatedPhase = true;
+            OnPhaseChanged?.Invoke(currentPhase);
+
+            if (logSpawnScaling)
+            {
+                Debug.Log(
+                    $"<color=orange>[EnemySpawner] Fase '{currentPhase}' (ronda {currentRound}, {progress * 100f:0}% transcurrido) " +
+                    $"| intervalo x{result.intervalMultiplier:0.00} | ráfaga {result.burstSize} | tope x{result.maxEnemiesFactor:0.00}</color>",
+                    this);
+            }
+        }
+
+        return result;
     }
 
     /// <summary>
@@ -225,15 +396,26 @@ public class EnemySpawner : MonoBehaviour
     /// <summary>
     /// Ajusta el ritmo de spawn a la ronda indicada y guarda el escalado de estadísticas
     /// que se aplicará a cada enemigo nuevo de esa ronda.
+    ///
+    /// <paramref name="roundDuration"/> es opcional (por defecto 0 = ritmo plano heredado): con
+    /// ella, la curva de fases sabe en qué punto de la ronda está y el spawner deja de ser plano.
+    /// Los cuatro parámetros originales no cambian, así que ningún llamante existente se rompe.
     /// </summary>
     public void ApplyRoundSettings(
         int roundNumber,
         EnemyScalingProfile profile,
         float intervalMultiplier = 1f,
-        float maxEnemiesMultiplier = 1f)
+        float maxEnemiesMultiplier = 1f,
+        float roundDuration = 0f)
     {
         currentRound = Mathf.Max(1, roundNumber);
         scalingProfile = profile;
+
+        // Reloj de la ronda a cero: las fases empiezan siempre desde el principio.
+        roundElapsed = 0f;
+        roundDuration = Mathf.Max(0f, roundDuration);
+        currentPhase = SpawnPhase.Calm;
+        hasEvaluatedPhase = false;
 
         int steps = currentRound - 1;
         float baseInterval = initialSpawnInterval - (steps * intervalDecreaseRate);
@@ -252,7 +434,8 @@ public class EnemySpawner : MonoBehaviour
             Debug.Log(
                 $"<color=orange>[EnemySpawner] Ronda {currentRound} configurada | Intervalo: {currentSpawnInterval:0.00}s | " +
                 $"Máx enemigos: {currentMaxEnemies} | Vida x{profile.healthMultiplier:0.00} | " +
-                $"Daño x{profile.damageMultiplier:0.00} | Velocidad x{profile.speedMultiplier:0.00}</color>",
+                $"Daño x{profile.damageMultiplier:0.00} | Velocidad x{profile.speedMultiplier:0.00} | " +
+                $"Fases: {(useWavePhases && roundDuration > 0.01f ? $"sí ({roundDuration:0}s)" : "no (ritmo plano)")}</color>",
                 this);
         }
     }
@@ -406,19 +589,28 @@ public class EnemySpawner : MonoBehaviour
     private void ApplyRecommendedPacing()
     {
         initialSpawnInterval = 1.8f;
-        minSpawnInterval = 0.4f;
+
+        // CORRECCIÓN DE SATURACIÓN: con 0.4s el intervalo tocaba suelo hacia el día 32 y con
+        // 100 enemigos el tope tocaba suelo hacia el día 27, así que los días 27-40 eran
+        // IDÉNTICOS en densidad. Bajar el suelo a 0.2s y subir el techo a 160 devuelve a la
+        // curva su pendiente durante toda la partida de 40 días.
+        minSpawnInterval = 0.2f;
         initialMaxEnemies = 22;
-        absoluteMaxEnemies = 100;
+        absoluteMaxEnemies = 160;
         intervalDecreaseRate = 0.045f;
         maxEnemiesIncreasePerLevel = 3;
         earlyBurstSize = 1;
         burstRoundsStart = 10;
         lateBurstSize = 3;
 
+        useWavePhases = true;
+        wavePhases = DefaultWaves();
+
         if (logSpawnScaling)
         {
             Debug.Log(
-                "[EnemySpawner] Ritmo recomendado aplicado: 1.8s → 0.4s, 22 → 100 enemigos y ráfagas de hasta 3 por ciclo. " +
+                "[EnemySpawner] Ritmo recomendado aplicado: 1.8s → 0.2s, 22 → 160 enemigos, ráfagas de hasta 3 y " +
+                "curva de fases (Calm/Tension/Surge/Breather) activa. " +
                 "Guarda la escena (Ctrl+S) para conservarlo.",
                 this);
         }
@@ -428,6 +620,10 @@ public class EnemySpawner : MonoBehaviour
 #endif
     }
 
+    /// <summary>
+    /// Dibuja la curva de la fase actual en la vista de Escena: esferas concéntricas con
+    /// color y altura por tramo, para ver de un vistazo dónde están el Calm y el Breather.
+    /// </summary>
     private void OnDrawGizmosSelected()
     {
         if (playerTransform == null) return;
@@ -437,5 +633,38 @@ public class EnemySpawner : MonoBehaviour
         Gizmos.DrawWireSphere(playerTransform.position, minSpawnDistance);
         Gizmos.color = Color.blue;
         Gizmos.DrawWireSphere(playerTransform.position, maxSpawnDistance);
+
+        if (wavePhases == null || wavePhases.Length == 0 || roundDuration <= 0.01f) return;
+
+        // Colores por fase: el mismo código para el gizmo y para el log, para no inventar
+        // un segundo mapa que se desincronice.
+        for (int i = 0; i < wavePhases.Length; i++)
+        {
+            SpawnWave wave = wavePhases[i];
+            Gizmos.color = GetPhaseColor(wave.phase);
+
+            // Esfera concéntrica cuya altura codifica el multiplicador de la fase.
+            float height = 0.5f + (wave.intervalMultiplier * 2f);
+            Gizmos.DrawWireSphere(
+                playerTransform.position + (Vector3.up * height),
+                maxSpawnDistance * (0.5f + (wave.maxEnemiesFactor * 0.5f)));
+        }
+
+        // Marcador del punto actual de la ronda.
+        Gizmos.color = Color.white;
+        float progress = RoundProgress;
+        Vector3 marker = playerTransform.position + new Vector3(0f, 0.1f, progress * maxSpawnDistance);
+        Gizmos.DrawWireSphere(marker, 0.6f);
+    }
+
+    private static Color GetPhaseColor(SpawnPhase phase)
+    {
+        switch (phase)
+        {
+            case SpawnPhase.Tension:  return new Color(1f, 0.75f, 0.2f);
+            case SpawnPhase.Surge:    return new Color(1f, 0.25f, 0.2f);
+            case SpawnPhase.Breather: return new Color(0.4f, 0.9f, 0.5f);
+            default:                   return new Color(0.5f, 0.8f, 1f); // Calm
+        }
     }
 }

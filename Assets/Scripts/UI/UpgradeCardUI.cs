@@ -61,8 +61,26 @@ public class UpgradeCardUI : MonoBehaviour
 
         gameObject.SetActive(true);
 
-        if (titleText != null) titleText.text = data.upgradeName;
-        if (descriptionText != null) descriptionText.text = data.description;
+        if (titleText != null)
+        {
+            titleText.text = data.upgradeName;
+
+            // Fase 2: el color de la rareza se aplica al título. Se lee del SO en cada
+            // SetupCard (no se cachea) para que un cambio de rareza en el Inspector se vea
+            // al instante durante el diseño.
+            titleText.color = data.RarityColor;
+        }
+
+        if (descriptionText != null)
+        {
+            // Si la carta v2 no tiene texto propio, se autogenera desde sus modificadores:
+            // una carta en blanco es peor que un texto técnico.
+            string text = string.IsNullOrWhiteSpace(data.description)
+                ? data.BuildModifierSummary()
+                : data.description;
+
+            descriptionText.text = text;
+        }
 
         if (iconImage != null)
         {

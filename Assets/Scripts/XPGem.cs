@@ -9,13 +9,37 @@ public class XPGem : MonoBehaviour, IPooledObject
     [SerializeField] private float magnetRadius = 3.5f;
     [Tooltip("Distancia a la que se recoge la gema.")]
     [SerializeField] private float collectRadius = 0.8f;
+    [Tooltip("Altura sobre el jugador hacia la que vuela la gema (centro del pecho).")]
+    [SerializeField] private float hoverHeight = 0.5f;
+
+    [Header("Atracción (pulido de game feel)")]
+    [Tooltip("Rampa de velocidad al entrar en el imán. 0 = velocidad constante (comportamiento antiguo). " +
+             "Con valor > 0 la gema arranca suave y acelera: se lee como atracción magnética, no como teletransporte.")]
+    [SerializeField, Min(0f)] private float attractAcceleration = 28f;
+    [Tooltip("Velocidad mínima al empezar la atracción. Baja de golpe y luego acelera.")]
+    [SerializeField, Min(0f)] private float attractStartSpeed = 2.5f;
+    [Tooltip("Giro en Y por segundo. Da vida a la gema mientras vuela hacia el jugador.")]
+    [SerializeField, Min(0f)] private float spinSpeed = 180f;
+
+    [Header("Radio conectado a las mejoras")]
+    [Tooltip("Si está activo, el radio de imán sale de RunStats.PickupRadius (por defecto el del " +
+             "CharacterDataSO). Es lo que hace que la mejora 'Radio de recogida' (StatType.IncreasePickupRadius) " +
+             "afecte de verdad a las gemas: sin esto esa estadística no tenía ningún consumidor.")]
+    [SerializeField] private bool usePickupRadiusStat = true;
 
     [Header("Audio")]
     [SerializeField] private AudioClip gemPickupSFX; // Arrastrar GetXP.mp3 aqui
 
     private Transform playerTransform;
     private PlayerLevelSystem cachedPlayerLevel;
+    private RunStats cachedPlayerStats;
     private bool isMagnetized = false;
+
+    /// <summary>
+    /// Velocidad de atracción actual. Se interpola hacia <see cref="moveSpeed"/> con
+    /// <see cref="attractAcceleration"/>: la gema no vuela a velocidad constante desde el primer frame.
+    /// </summary>
+    private float currentSpeed;
 
     /// <summary>
     /// True cuando esta gema ya se recogió (o se recicló): evita sumar XP o repetir el SFX dos veces
@@ -44,6 +68,10 @@ public class XPGem : MonoBehaviour, IPooledObject
         {
             cachedPlayerLevel = player;
             playerTransform = player.transform;
+
+            // RunStats vive en el MISMO GameObject que el Player: se resuelve una vez aquí y
+            // nunca dentro de Update. Puede ser null si el Player aún no lo tiene.
+            cachedPlayerStats = player.GetComponent<RunStats>() ?? RunStats.Active;
         }
     }
 
@@ -51,6 +79,15 @@ public class XPGem : MonoBehaviour, IPooledObject
     {
         xpAmount = amount;
     }
+
+    /// <summary>
+    /// Radio de imán efectivo. Sin RunStats, o con la opción desactivada, se usa el valor
+    /// serializado de este componente (comportamiento heredado intacto).
+    /// </summary>
+    private float EffectiveMagnetRadius =>
+        usePickupRadiusStat && cachedPlayerStats != null
+            ? Mathf.Max(0.1f, cachedPlayerStats.PickupRadius)
+            : magnetRadius;
 
     // ======================================================================
     // RECICLAJE (OBJECT POOLING)
@@ -61,12 +98,17 @@ public class XPGem : MonoBehaviour, IPooledObject
         // Estado limpio en cada reutilización desde el pool.
         isMagnetized = false;
         isDespawned = false;
+
+        // La rampa de velocidad arranca de cero en cada reutilización: si conservara la
+        // velocidad final del vuelo anterior, la gema siguiente saldría disparada.
+        currentSpeed = 0f;
     }
 
     public void OnPoolDespawned()
     {
         isMagnetized = false;
         isDespawned = true;
+        currentSpeed = 0f;
     }
 
     private void Update()
@@ -77,16 +119,36 @@ public class XPGem : MonoBehaviour, IPooledObject
             return;
         }
 
-        float distance = Vector3.Distance(transform.position, playerTransform.position);
-        
-        if (distance <= magnetRadius)
+        // UN SOLO punto de verdad para la distancia: se mide contra el MISMO punto al que
+        // vuela la gema. Antes se medía contra los pies del jugador pero se movía hacia el
+        // pecho (+0.5), así que la recogida ocurría con un desfase constante.
+        Vector3 target = playerTransform.position + (Vector3.up * hoverHeight);
+        float distance = Vector3.Distance(transform.position, target);
+
+        if (!isMagnetized && distance <= EffectiveMagnetRadius)
         {
             isMagnetized = true;
+
+            // Arranca cerca de cero y sube hasta moveSpeed: la aceleración es lo que convierte
+            // un "MoveTowards" rígido en una atracción que se siente magnética.
+            currentSpeed = Mathf.Min(attractStartSpeed, moveSpeed);
         }
 
         if (isMagnetized)
         {
-            transform.position = Vector3.MoveTowards(transform.position, playerTransform.position + Vector3.up * 0.5f, moveSpeed * Time.deltaTime);
+            // Rampa de velocidad. Con attractAcceleration = 0 se queda en moveSpeed constante
+            // y el comportamiento es idéntico al anterior.
+            currentSpeed = Mathf.MoveTowards(
+                currentSpeed,
+                moveSpeed,
+                attractAcceleration * Time.deltaTime);
+
+            transform.position = Vector3.MoveTowards(transform.position, target, currentSpeed * Time.deltaTime);
+
+            if (spinSpeed > 0f)
+            {
+                transform.Rotate(Vector3.up, spinSpeed * Time.deltaTime, Space.World);
+            }
 
             if (distance <= collectRadius)
             {

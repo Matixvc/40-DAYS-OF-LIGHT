@@ -279,7 +279,10 @@ public class RunDirector : MonoBehaviour
         float intervalMultiplier = IsNightRound ? nightSpawnIntervalMultiplier : 1f;
         float maxEnemiesMultiplier = IsNightRound ? nightMaxEnemiesMultiplier : 1f;
 
-        enemySpawner.ApplyRoundSettings(CurrentRound, profile, intervalMultiplier, maxEnemiesMultiplier);
+        // Se le pasa la duración de la ronda para que el spawner sepa calcular la curva de
+        // fases (Calm → Tension → Surge → Breather). Sin este dato funcionaría plano.
+        enemySpawner.ApplyRoundSettings(
+            CurrentRound, profile, intervalMultiplier, maxEnemiesMultiplier, CurrentRoundDuration);
 
         // Se fuerza el spawn activo al empezar CUALQUIER ronda,
         // incluida la primera ronda posterior a una noche (arregla el "Día 11 sin enemigos").

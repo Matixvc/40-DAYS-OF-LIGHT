@@ -74,6 +74,11 @@ public class EnemyAI : MonoBehaviour, IPooledObject
     [Header("Escalado de Dificultad (runtime)")]
     [Tooltip("Tiempo máximo que puede durar la animación de ataque antes de liberar al enemigo.")]
     [SerializeField] private float attackSafetyTimeout = 2f;
+
+    [Header("Juice (Micro-pausa de impacto)")]
+    [Tooltip("Segundos reales de micro-pausa cuando la garra alcanza al jugador. 0 la desactiva. " +
+             "Idempotente: nunca se encadenan dos micro-pausas por el mismo golpe.")]
+    [SerializeField] private float hitStopOnPlayerHit = 0.04f;
     [Tooltip("Actívalo solo para depurar: el spawner ya registra el escalado de cada enemigo.")]
     [SerializeField] private bool logSpawnScaling = false;
 
@@ -695,7 +700,14 @@ public class EnemyAI : MonoBehaviour, IPooledObject
         if (Vector3.Dot(transform.forward, directionToPlayer) <= 0.3f) return;
 
         // Daño aplicado únicamente aquí: sin daño anticipado.
+        // La micro-pausa va en ESTE frame, el de la garra, no antes: es el impacto lo que la justifica.
         playerHealth.TakeDamage(CurrentDamage);
+
+        // HealthComponent ya pide su propia micro-pausa al recibir el golpe, así que esta
+        // llamada normalmente se descarta por el anti-spam de HitStopManager (0.06s). Es
+        // intencionada: deja el impacto explícito en el enemigo aunque el HealthComponent
+        // deje de pedirlo, y Request es idempotente, así que nunca se encadenan dos pausas.
+        GameStateController.Instance?.RequestHitStop(hitStopOnPlayerHit);
     }
 
     /// <summary>

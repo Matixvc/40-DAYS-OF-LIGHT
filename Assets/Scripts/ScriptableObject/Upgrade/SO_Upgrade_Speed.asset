@@ -17,3 +17,8 @@ MonoBehaviour:
   icon: {fileID: 0}
   upgradeType: 3
   value: 0.1
+  modifiers: []
+  grantsWeapon: {fileID: 0}
+  rarity: 0
+  maxStacks: 1
+  weight: 100

@@ -1,0 +1,36 @@
+%YAML 1.1
+%TAG !u! tag:unity3d.com,2011:
+--- !u!114 &11400000
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 0}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: fc6a2f5c0aba30641ba7e09fab43fa51, type: 3}
+  m_Name: SO_WeaponTest_Orbit
+  m_EditorClassIdentifier: Assembly-CSharp::WeaponDataSO
+  weaponName: Corona de Orbes
+  damage: 22
+  attackRange: 4.5
+  attackInterval: 1
+  flashColor: {r: 1, g: 0.9, b: 0.3, a: 0.5}
+  archetype: 1
+  orbitCount: 3
+  orbitRadius: 2.3
+  orbitDegreesPerSecond: 135
+  orbitHitInterval: 0.45
+  orbitOrbRadius: 0.45
+  projectileCount: 1
+  projectileSpeed: 16
+  projectileLifetime: 1.6
+  projectileHitRadius: 0.6
+  projectilePierce: 1
+  projectileSpreadDegrees: 6
+  projectilePrefab: {fileID: 0}
+  auraRadius: 3.6
+  auraTickInterval: 0.5
+  visualPrefab: {fileID: 2926595976938009211, guid: 2aa641ffe75f7ab4c8e5fa96218f0267, type: 3}
+  visualScale: 1

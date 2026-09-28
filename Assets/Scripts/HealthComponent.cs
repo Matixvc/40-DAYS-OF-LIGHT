@@ -26,6 +26,14 @@ public class HealthComponent : MonoBehaviour
     [SerializeField] private bool destroyOnDeath = true;
     [SerializeField] private float destroyDelay = 0.05f;
 
+    [Header("Mitigación y vida extra (Fase 2)")]
+    [Tooltip("Puntos planos que se restan a CADA golpe recibido. Lo escribe UpgradeManager desde " +
+             "RunStats.Armor. En 0 (valor por defecto) el daño recibido no cambia.")]
+    [SerializeField] private float flatDamageReduction = 0f;
+    [Tooltip("Al subir la vida máxima por una mejora, ¿se rellena también la vida? " +
+             "Activado = la mejora de vida máxima cura de inmediato (habitual en roguelites).")]
+    [SerializeField] private bool refillOnMaxHealthIncrease = true;
+
     [Header("Recompensas (Drop de XP)")]
     [SerializeField] private GameObject xpGemPrefab;
     private float xpReward = 15f;
@@ -36,6 +44,13 @@ public class HealthComponent : MonoBehaviour
     [SerializeField] private GameObject damageNumberPrefab;
     [Tooltip("Altura sobre el objeto donde aparece el número flotante.")]
     [SerializeField] private float damageNumberHeight = 1.5f;
+
+    [Header("Juice (Micro-pausa de impacto)")]
+    [Tooltip("Segundos reales de micro-pausa al CERMAR UN ENEMIGO. Una muerte merece más peso que un golpe. 0 la desactiva.")]
+    [SerializeField] private float hitStopOnEnemyDeath = 0.04f;
+    [Tooltip("Segundos reales de micro-pausa cuando el golpe LO RECIBE el jugador. Un poco más larga: " +
+             "es el feedback que el jugador más nota. 0 la desactiva.")]
+    [SerializeField] private float hitStopOnPlayerHit = 0.06f;
 
     [Header("Audio de Impacto (daño recibido)")]
     [Tooltip("Sonido al recibir daño (ImapactEnemy.mp3). En el JUGADOR se reproduce en 2D y con " +
@@ -177,7 +192,7 @@ public class HealthComponent : MonoBehaviour
     {
         if (isDead) return;
 
-        currentHealth -= amount;
+        currentHealth -= Mathf.Max(0f, amount - flatDamageReduction);
         currentHealth = Mathf.Clamp(currentHealth, 0f, maxHealth);
 
         OnHealthChanged?.Invoke(currentHealth, maxHealth);
@@ -191,9 +206,19 @@ public class HealthComponent : MonoBehaviour
         // --- JUICE: número de daño flotante sobre la posición del impacto ---
         SpawnDamageNumber(amount);
 
+        // --- JUICE: micro-pausa de impacto ---
+        // Solo cuando el golpe realmente cuenta (una muerte) o cuando lo recibe el jugador.
+        // En un enemigo que sobrevive no se pide: el pulso de área ya pide la suya en
+        // PlayerAttack, y sumarlas aquí convertiría el impacto en un parpadeo.
         if (currentHealth <= 0f)
         {
             Die();
+            return;
+        }
+
+        if (isPlayerTarget)
+        {
+            GameStateController.Instance?.RequestHitStop(hitStopOnPlayerHit);
         }
     }
 
@@ -332,10 +357,67 @@ public class HealthComponent : MonoBehaviour
         OnHealthChanged?.Invoke(currentHealth, maxHealth);
     }
 
+    // ==================================================================
+    // Fase 2: mitigación y vida máxima adicional
+    // ==================================================================
+
+    /// <summary>
+    /// Mitigación plana de daño. La escribe <see cref="UpgradeManager"/> después de cada
+    /// mejora; con 0 (valor por defecto) el daño recibido es exactamente el de antes.
+    ///
+    /// Nota: NO se usa <see cref="ApplyHealthScaling"/>, que reinicializa la vida y borraría
+    /// el progreso del jugador en plena partida.
+    /// </summary>
+    public void SetFlatDamageReduction(float value)
+    {
+        flatDamageReduction = Mathf.Max(0f, value);
+    }
+
+    /// <summary>Mitigación plana actual, por si la UI quiere mostrarla.</summary>
+    public float FlatDamageReduction => flatDamageReduction;
+
+    /// <summary>
+    /// Ajusta la vida máxima a <c>baseMaxHealth + bonus</c>. Es idempotente: se puede llamar en
+    /// cada mejora porque siempre parte de la vida base, nunca del valor ya modificado.
+    ///
+    /// Se conserva la proporción de vida actual salvo que <c>refillOnMaxHealthIncrease</c> esté
+    /// activo, en cuyo caso la mejora también cura.
+    /// </summary>
+    public void ApplyMaxHealthBonus(float bonus)
+    {
+        float newMaxHealth = Mathf.Max(1f, baseMaxHealth + Mathf.Max(0f, bonus));
+
+        if (Mathf.Approximately(newMaxHealth, maxHealth))
+        {
+            return;
+        }
+
+        if (refillOnMaxHealthIncrease && newMaxHealth > maxHealth)
+        {
+            maxHealth = newMaxHealth;
+            currentHealth = newMaxHealth;
+        }
+        else
+        {
+            float ratio = maxHealth > 0f ? currentHealth / maxHealth : 1f;
+            maxHealth = newMaxHealth;
+            currentHealth = Mathf.Clamp(ratio * newMaxHealth, 0f, newMaxHealth);
+        }
+
+        OnHealthChanged?.Invoke(currentHealth, maxHealth);
+    }
+
     private void Die()
     {
         if (isDead) return;
         isDead = true;
+
+        // Micro-pausa de cierre: el último golpe de un enemigo es el que más peso necesita.
+        // Va DESPUÉS de marcar isDead para que un golpe letal nunca se procese dos veces.
+        if (!isPlayerTarget)
+        {
+            GameStateController.Instance?.RequestHitStop(hitStopOnEnemyDeath);
+        }
 
         DropXpGem();
 

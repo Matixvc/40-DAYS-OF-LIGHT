@@ -31,6 +31,21 @@ public class LevelUpUI : MonoBehaviour
     private Coroutine activeCoroutine;
     private bool isVisible;
 
+    /// <summary>
+    /// Opciones forzadas para la próxima apertura del panel. Cuando no es null, el panel
+    /// muestra EXACTAMENTE estas mejoras en este orden, ignorando el sorteo aleatorio.
+    ///
+    /// Se usa para dos casos donde el azar sería un error de diseño:
+    ///   1) Elección del arma inicial: el jugador debe ver las 4 armas, no 3 al azar de 11.
+    ///   2) Recompensa de jefe: el premio debe ser siempre una carta de arma o evolución.
+    /// Se consume en la primera apertura: <see cref="ShowPanel"/> y <see cref="ShowPanelWith"/>
+    /// la borran después de repartir, así una selección normal posterior no hereda el forzaje.
+    /// </summary>
+    private List<UpgradeDataSO> forcedUpgrades;
+
+    /// <summary>True cuando el jugador tiene abierto un panel con opciones forzadas (arma inicial / jefe).</summary>
+    public bool IsShowingForcedOptions => forcedUpgrades != null;
+
     /// <summary>Evita repetir el aviso de "falta UpgradeManager" en cada llamada a ResolveUpgradeManager().</summary>
     private bool missingUpgradeManagerWarned;
 
@@ -121,6 +136,29 @@ public class LevelUpUI : MonoBehaviour
     /// </summary>
     public void ShowPanel()
     {
+        ShowPanel(null);
+    }
+
+    /// <summary>
+    /// Abre el panel ofreciendo EXACTAMENTE las mejoras indicadas, en ese orden, saltándose
+    /// el sorteo aleatorio. Si la lista es null o vacía, se comporta como <see cref="ShowPanel"/>.
+    /// </summary>
+    /// <remarks>
+    /// El forzaje se consume en esta misma llamada: la siguiente subida de nivel normal vuelve
+    /// a sortear de <c>availableUpgrades</c>. Así el arma inicial no contamina el resto del run.
+    /// </remarks>
+    public void ShowPanelWith(IList<UpgradeDataSO> forcedOptions)
+    {
+        forcedUpgrades = forcedOptions != null && forcedOptions.Count > 0
+            ? new List<UpgradeDataSO>(forcedOptions)
+            : null;
+
+        ShowPanel(forcedUpgrades);
+    }
+
+    /// <summary>Implementación común de ambas aperturas.</summary>
+    private void ShowPanel(List<UpgradeDataSO> forcedOptions)
+    {
         // Evita abrir el panel dos veces si ya está visible
         if (isVisible) return;
 
@@ -149,7 +187,10 @@ public class LevelUpUI : MonoBehaviour
             AudioManager.Instance.PlaySFX(levelUpFanfareSFX, 1f, 0f);
         }
 
-        PopulateUpgradeCards();
+        PopulateUpgradeCards(forcedOptions);
+
+        // El forzaje es de UN solo uso: la siguiente subida vuelve a sortear al azar.
+        forcedUpgrades = null;
 
         if (activeCoroutine != null)
         {
@@ -159,15 +200,54 @@ public class LevelUpUI : MonoBehaviour
         activeCoroutine = StartCoroutine(AnimateShow());
     }
 
-    private void PopulateUpgradeCards()
+    /// <param name="forcedOptions">
+    /// Si es null o vacía, se sortean 3 mejoras de <c>availableUpgrades</c> al azar.
+    /// </param>
+    private void PopulateUpgradeCards(List<UpgradeDataSO> forcedOptions)
     {
         if (upgradeCards == null) return;
 
-        // Copiar el pool para no repetir la misma mejora en dos cartas distintas
+        // Se resuelve UNA vez y se reutiliza en todas las cartas: antes se llamaba dentro del
+        // bucle y, con el manager sin asignar, eso generaba una búsqueda por carta y por nivel.
+        UpgradeManager manager = ResolveUpgradeManager();
+
+        bool useForced = forcedOptions != null && forcedOptions.Count > 0;
         List<UpgradeDataSO> pool = new List<UpgradeDataSO>();
-        if (availableUpgrades != null)
+
+        if (useForced)
         {
-            pool.AddRange(availableUpgrades);
+            // Rama forzada: se respeta el orden del llamante. No se filtran por CanApply
+            // porque un arma inicial debe poder ofrecerse aunque el jugador ya la tenga
+            // (repetirla la sube de nivel, que es un resultado válido).
+            for (int i = 0; i < forcedOptions.Count; i++)
+            {
+                if (forcedOptions[i] != null)
+                {
+                    pool.Add(forcedOptions[i]);
+                }
+            }
+        }
+        else if (availableUpgrades != null)
+        {
+            // Rama normal: copiar el pool para no repetir la misma mejora en dos cartas distintas.
+            for (int i = 0; i < availableUpgrades.Count; i++)
+            {
+                UpgradeDataSO candidate = availableUpgrades[i];
+
+                if (candidate == null)
+                {
+                    continue;
+                }
+
+                // Las mejoras que ya alcanzaron su maxStacks no se ofrecen: una carta sin
+                // efecto es peor que una carta menos, porque la elección se gasta igual.
+                if (manager != null && !manager.CanApply(candidate))
+                {
+                    continue;
+                }
+
+                pool.Add(candidate);
+            }
         }
 
         int usedCards = 0;
@@ -187,7 +267,7 @@ public class LevelUpUI : MonoBehaviour
             UpgradeDataSO selectedSO = pool[randomIndex];
             pool.RemoveAt(randomIndex); // Evita duplicados en la misma selección
 
-            upgradeCards[i].SetupCard(selectedSO, this, ResolveUpgradeManager());
+            upgradeCards[i].SetupCard(selectedSO, this, manager);
             usedCards++;
         }
 

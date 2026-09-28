@@ -22,11 +22,14 @@ public class PlayerAttack : MonoBehaviour
     [Header("Audio")]
     [SerializeField] private AudioClip attackPastorSFX; // Arrastrar AtackPastorPlayer.mp3 aqui
 
-    [Header("Juice (Camera Shake)")]
+    [Header("Juice (Camera Shake + Hit Stop)")]
     [Tooltip("Duración de la sacudida al impactar al menos a un enemigo.")]
     [SerializeField] private float shakeDuration = 0.12f;
     [Tooltip("Magnitud de la sacudida al impactar al menos a un enemigo.")]
     [SerializeField] private float shakeMagnitude = 0.15f;
+    [Tooltip("Micro-pausa de impacto (segundos reales). 0.04 es el valor estándar del género. " +
+             "0 la desactiva sin tocar el resto del juice.")]
+    [SerializeField] private float hitStopDuration = 0.04f;
 
     // Reutilizado para no asignar memoria en cada ataque.
     private readonly HashSet<HealthComponent> damagedTargets = new HashSet<HealthComponent>();
@@ -172,10 +175,14 @@ public class PlayerAttack : MonoBehaviour
             enemyHealth.TakeDamage(AttackDamage);
         }
 
-        // Juice: sacudida suave solo si el ataque impactó a alguien (cero GC: singleton cacheado).
-        if (damagedTargets.Count > 0 && CameraShake.Instance != null)
+        // Juice: sacudida + micro-pausa SOLO si el ataque impactó a alguien.
+        // Ambas cosas van en la misma rama a propósito: el hit-stop de un ataque que no
+        // conecta sería una pausa sin impacto, que se lee como un tirón y no como un golpe.
+        if (damagedTargets.Count > 0)
         {
-            CameraShake.Instance.Shake(shakeDuration, shakeMagnitude);
+            // Cero GC: singletons cacheados, sin Find ni asignaciones.
+            CameraShake.Instance?.Shake(shakeDuration, shakeMagnitude);
+            GameStateController.Instance?.RequestHitStop(hitStopDuration);
         }
 
         if (attackVisualArea != null)

@@ -16,6 +16,13 @@ public enum GameState
 /// <summary>
 /// Controlador único del estado de la partida y de Time.timeScale.
 /// NINGÚN otro script debe modificar Time.timeScale: todos piden transiciones aquí.
+///
+/// ÚNICO PUNTO DEL PROYECTO QUE ESCRIBE Time.timeScale: el método privado <c>ApplyTimeScale</c>.
+/// Ese método compone DOS factores:
+///   1) el estado de la partida (congelado en pausa, nivel, menú y fin de partida), y
+///   2) la micro-pausa de impacto pedida con <see cref="RequestHitStop"/>.
+/// Así el hit-stop es un multiplicador más y no una excepción al invariante, y una transición
+/// de estado durante un impacto respeta la composición en vez de pisarla.
 /// </summary>
 [DefaultExecutionOrder(-1000)]
 [DisallowMultipleComponent]
@@ -34,6 +41,12 @@ public class GameStateController : MonoBehaviour
     [SerializeField] private bool logStateChanges = true;
 
     private const float FrozenTimeScale = 0f;
+
+    /// <summary>
+    /// Factor de la micro-pausa de impacto. 1 = sin pausa en curso.
+    /// Solo lo escriben <see cref="RequestHitStop"/> y el final de la pausa.
+    /// </summary>
+    private float hitStopTimeScale = 1f;
 
     public GameState CurrentState { get; private set; } = GameState.Boot;
 
@@ -69,16 +82,98 @@ public class GameStateController : MonoBehaviour
     private void Start()
     {
         // Boot es transitorio y no se valida.
-        // Limpiamos también cualquier timeScale heredado de una recarga de escena.
-        Time.timeScale = normalTimeScale;
+        // Se limpia cualquier micro-pausa heredada de la partida anterior: el factor del
+        // hit-stop arranca en 1 y ApplyState (vía ApplyTimeScale) escribe la escala correcta,
+        // así que el reinicio de escena deja el tiempo limpio sin escribirlo aquí.
+        hitStopTimeScale = 1f;
         ApplyState(startPlayingDirectly ? GameState.Playing : GameState.MainMenu);
+
+        // A partir de aquí todos los Awake han terminado: el HitStopManager ya existe.
+        SubscribeToHitStop();
     }
 
     private void OnDestroy()
     {
+        UnsubscribeFromHitStop();
+
         if (Instance == this)
         {
             Instance = null;
+        }
+    }
+
+    // ======================================================================
+    // MICRO-PAUSA DE IMPACTO (HIT STOP)
+    // ======================================================================
+
+    /// <summary>
+    /// Micro-pausa de impacto: ralentiza el juego una fracción de segundo para que un golpe
+    /// conecte con peso. No cambia el estado de la partida, solo multiplica la escala de tiempo.
+    ///
+    /// Debe llamarla quien detecte el impacto (PlayerAttack, HealthComponent, EnemyAI...).
+    /// Devuelve false si la pausa no procede, para que el llamante pueda omitir el resto del juice.
+    /// </summary>
+    /// <param name="duration">Segundos reales. 0 o menor usa el valor por defecto del manager (0.04s).</param>
+    public bool RequestHitStop(float duration = 0f)
+    {
+        // El estado manda sobre el juice: en pausa, nivel o fin de partida el tiempo ya está
+        // congelado, así que una micro-pausa no aportaría nada y solo ensuciaría la composición.
+        if (ShouldFreezeTime(CurrentState))
+        {
+            return false;
+        }
+
+        HitStopManager hitStop = HitStopManager.Instance;
+
+        if (hitStop == null)
+        {
+            return false;
+        }
+
+        // Si el manager ya está en pausa, su anti-spam devuelve 0 y aquí no se toca nada:
+        // es el comportamiento correcto (no se encadenan pausas).
+        if (hitStop.Request(duration) <= 0f)
+        {
+            return false;
+        }
+
+        hitStopTimeScale = hitStop.ScaleWhileStopped;
+        ApplyTimeScale();
+        return true;
+    }
+
+    /// <summary>Se llama al terminar la micro-pausa para devolver el tiempo a su velocidad normal.</summary>
+    private void HandleHitStopEnded()
+    {
+        if (hitStopTimeScale == 1f)
+        {
+            return;
+        }
+
+        hitStopTimeScale = 1f;
+        ApplyTimeScale();
+    }
+
+    private void SubscribeToHitStop()
+    {
+        HitStopManager hitStop = HitStopManager.Instance;
+
+        if (hitStop == null)
+        {
+            return;
+        }
+
+        hitStop.OnHitStopEnded -= HandleHitStopEnded; // Evita suscripciones duplicadas
+        hitStop.OnHitStopEnded += HandleHitStopEnded;
+    }
+
+    private void UnsubscribeFromHitStop()
+    {
+        HitStopManager hitStop = HitStopManager.Instance;
+
+        if (hitStop != null)
+        {
+            hitStop.OnHitStopEnded -= HandleHitStopEnded;
         }
     }
 
@@ -168,7 +263,10 @@ public class GameStateController : MonoBehaviour
     {
         if (CurrentState == GameState.Playing)
         {
-            Time.timeScale = normalTimeScale;
+            // Un reinicio limpia cualquier micro-pausa pendiente: la partida nueva
+            // no debe arrancar con el tiempo ralentizado por un impacto de la anterior.
+            hitStopTimeScale = 1f;
+            ApplyTimeScale();
             return true;
         }
 
@@ -187,7 +285,8 @@ public class GameStateController : MonoBehaviour
     /// </summary>
     public void PrepareForSceneLoad()
     {
-        Time.timeScale = normalTimeScale;
+        hitStopTimeScale = 1f;
+        ApplyTimeScale();
     }
 
     // ======================================================================
@@ -195,7 +294,8 @@ public class GameStateController : MonoBehaviour
     // ======================================================================
 
     /// <summary>
-    /// Cambia de estado validando la transición. Es el único punto que modifica Time.timeScale.
+    /// Cambia de estado validando la transición. No escribe el tiempo directamente:
+    /// delega en <c>ApplyState</c>, que a su vez compone con la micro-pausa de impacto.
     /// </summary>
     public bool RequestState(GameState newState)
     {
@@ -219,8 +319,8 @@ public class GameStateController : MonoBehaviour
         GameState previous = CurrentState;
         CurrentState = newState;
 
-        // ÚNICO punto del proyecto que modifica Time.timeScale.
-        Time.timeScale = ShouldFreezeTime(newState) ? FrozenTimeScale : normalTimeScale;
+        // Único punto de escritura del tiempo: compone estado + micro-pausa de impacto.
+        ApplyTimeScale();
 
         if (logStateChanges)
         {
@@ -230,6 +330,21 @@ public class GameStateController : MonoBehaviour
         }
 
         OnStateChanged?.Invoke(previous, newState);
+    }
+
+    /// <summary>
+    /// ÚNICO punto del proyecto que escribe <see cref="Time.timeScale"/>.
+    ///
+    /// Compone dos factores: el estado de la partida y la micro-pausa de impacto.
+    /// El estado tiene PRIORIDAD ABSOLUTA: si la partida está congelada (pausa, selección de
+    /// mejora, menú o fin de partida) el resultado es 0 pase lo que pase con el hit-stop. Por eso
+    /// abrir el panel de nivel en mitad de un impacto no "descongela" nada.
+    /// </summary>
+    private void ApplyTimeScale()
+    {
+        Time.timeScale = ShouldFreezeTime(CurrentState)
+            ? FrozenTimeScale
+            : normalTimeScale * hitStopTimeScale;
     }
 
     private static bool ShouldFreezeTime(GameState state)

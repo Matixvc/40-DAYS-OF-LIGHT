@@ -331,17 +331,18 @@ public class GameManager : MonoBehaviour
     /// <summary>Último paso de la secuencia: panel de Game Over visible y tiempo congelado.</summary>
     private void EnterGameOverState()
     {
-        // Aplicar explícitamente Time.timeScale = 0f justo al finalizar la animación
-        Time.timeScale = 0f;
-
         GameStateController stateController = GameStateController.Instance;
 
         if (stateController == null)
         {
             // Respaldo de emergencia: sin controlador el tiempo no se congela, pero se avisa claramente.
+            // Es el ÚNICO sitio del proyecto que escribe Time.timeScale fuera del GameStateController,
+            // y solo cuando ese controlador no existe (escenas de prueba antiguas, p. ej.).
             Debug.LogError(
                 "[GameManager] No hay GameStateController en la escena: el tiempo NO se congelará al morir.",
                 this);
+
+            Time.timeScale = 0f;
             ShowGameOverUI();
         }
         else if (!stateController.RequestGameOver())
@@ -439,13 +440,18 @@ public class GameManager : MonoBehaviour
 
         // PRIORIDAD: devolver el control del tiempo ANTES de resetear estados o recargar la escena.
         // Si la escena tardara en cargar (o algo fallara), el juego nunca quedaría congelado.
-        Time.timeScale = 1f;
-
-        // Devolver el control del tiempo al estado de juego antes de recargar la escena.
+        // RequestRestart limpia además cualquier micro-pausa de impacto pendiente, así que la
+        // partida nueva no arranca con el tiempo ralentizado por un golpe de la anterior.
         GameStateController stateController = GameStateController.Instance;
+
         if (stateController != null)
         {
             stateController.RequestRestart();
+        }
+        else
+        {
+            // Respaldo: sin controlador no hay a quién pedirle que restaure la escala.
+            Time.timeScale = 1f;
         }
 
         UnityEngine.SceneManagement.SceneManager.LoadScene(UnityEngine.SceneManagement.SceneManager.GetActiveScene().buildIndex);
