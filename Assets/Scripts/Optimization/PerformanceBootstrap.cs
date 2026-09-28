@@ -11,8 +11,12 @@ public class PerformanceBootstrap : MonoBehaviour
     [Header("Objetivo de FPS")]
     [Tooltip("Límite de fotogramas por segundo para evitar sobrecarga y GPU Timeout (TDR).")]
     [SerializeField] private int targetFrameRate = 120;
-    [Tooltip("Desactiva VSync para que targetFrameRate se respete rigurosamente tanto en móvil como en escritorio.")]
+
+    [Tooltip("Desactiva VSync en TODAS las plataformas para que targetFrameRate se respete rigurosamente.")]
     [SerializeField] private bool disableVSync = true;
+
+    [Tooltip("Desactiva VSync SOLO en móvil. Permite afinar por plataforma: en escritorio puede " +
+             "convivir con VSync si targetFrameRate va a coincidir con la tasa del monitor.")]
     [SerializeField] private bool disableVSyncOnMobile = true;
 
     [Header("Solo móvil")]
@@ -28,10 +32,15 @@ public class PerformanceBootstrap : MonoBehaviour
     {
         bool isMobile = Application.isMobilePlatform;
 
-        // Limita la tasa de fotogramas objetivo a 120 para evitar renderizado descontrolado y colapsos por GPU TDR
+        // Limita la tasa de fotogramas objetivo para evitar renderizado descontrolado y colapsos por GPU TDR.
         Application.targetFrameRate = targetFrameRate;
 
-        if (disableVSync || isMobile)
+        // Sin VSync, el refresco lo fija targetFrameRate y no la GPU. Se decide por plataforma
+        // en vez de forzar siempre: antes la condición era (disableVSync || isMobile), lo que
+        // hacía que disableVSyncOnMobile no tuviera efecto real en móvil.
+        bool shouldDisableVSync = disableVSync || (isMobile && disableVSyncOnMobile);
+
+        if (shouldDisableVSync)
         {
             QualitySettings.vSyncCount = 0;
         }
@@ -53,8 +62,8 @@ public class PerformanceBootstrap : MonoBehaviour
         {
             Debug.Log(
                 $"[PerformanceBootstrap] Móvil: {isMobile} | targetFrameRate: {Application.targetFrameRate} | " +
-                $"vSync: {QualitySettings.vSyncCount} | Nivel de calidad: {QualitySettings.GetQualityLevel()} | " +
-                $"Sombras: {QualitySettings.shadows}",
+                $"vSync desactivado: {shouldDisableVSync} (vSync: {QualitySettings.vSyncCount}) | " +
+                $"Nivel de calidad: {QualitySettings.GetQualityLevel()} | Sombras: {QualitySettings.shadows}",
                 this);
         }
     }

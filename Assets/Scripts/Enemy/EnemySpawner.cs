@@ -565,7 +565,10 @@ public class EnemySpawner : MonoBehaviour
             Debug.LogError("[EnemySpawner] El prefab de enemigo no tiene EnemyAI.", spawnedEnemy);
         }
 
-        if (logSpawnScaling)
+        // Este log salía UNA VEZ POR ENEMIGO SPAWNEADO. Con una horda de 100 y ráfagas de 3,
+        // eran cientos de líneas por minuto que tapaban los avisos importantes en consola.
+        // Ahora solo sale con el modo verboso activo.
+        if (logSpawnScaling && GameStateController.VerboseLogsEnabled)
         {
             float healthValue = enemyHealth != null ? enemyHealth.MaxHealth : 0f;
             float damageValue = enemyAI != null ? enemyAI.CurrentDamage : 0f;

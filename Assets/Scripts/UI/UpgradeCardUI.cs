@@ -25,6 +25,21 @@ public class UpgradeCardUI : MonoBehaviour
 
     public UpgradeDataSO CurrentData => currentData;
 
+    /// <summary>
+    /// Callback opcional que reemplaza al cierre automático de <see cref="LevelUpUI"/>.
+    ///
+    /// POR QUÉ EXISTE: la carta nació atada al panel de nivel (cerrarse a sí misma al pulsarse),
+    /// pero el <see cref="WeaponPanelUI"/> necesita el control del flujo: aplicar el arma,
+    /// ocultar SU panel y reanudar la partida. Con este evento la carta se reutiliza tal cual
+    /// en ambos paneles sin duplicar su lógica de botón, bloqueo de doble clic y audio.
+    ///
+    /// Si es null, se comporta como siempre (delega en LevelUpUI.HidePanel).
+    /// </summary>
+    public System.Action<UpgradeDataSO> OnSelectedOverride;
+
+    /// <summary>La carta ya se pulsó en esta apertura. Impide el doble clic accidental.</summary>
+    public bool AlreadyApplied => alreadyApplied;
+
     private void Awake()
     {
         // Si LevelUpUI nos pasa un manager nulo (Inspector sin asignar) se resuelve aquí mismo:
@@ -49,7 +64,16 @@ public class UpgradeCardUI : MonoBehaviour
     /// <summary>
     /// Rellena la carta con una mejora concreta y prepara su botón.
     /// </summary>
-    public void SetupCard(UpgradeDataSO data, LevelUpUI ui, UpgradeManager manager)
+    /// <param name="data">Mejora a mostrar. Su <c>grantsWeapon</c>, si lo tiene, manda en el texto.</param>
+    /// <param name="ui">Panel de nivel dueño de la carta. Null en WeaponPanelUI.</param>
+    /// <param name="manager">UpgradeManager que aplica la mejora.</param>
+    /// <param name="useWeaponDataText">
+    /// Fuerza que el título y la descripción se lean del <see cref="WeaponDataSO"/> en vez del
+    /// <see cref="UpgradeDataSO"/>. Lo activa el panel de armas, donde la carta representa un ARMA
+    /// y su nombre técnico ("Furia Celestial") no le sirve al jugador que está eligiendo entre
+    /// "Órbita Sagrada" y "Aura de Purificación".
+    /// </param>
+    public void SetupCard(UpgradeDataSO data, LevelUpUI ui, UpgradeManager manager, bool useWeaponDataText = false)
     {
         currentData = data;
         mainUI = ui;
@@ -63,7 +87,9 @@ public class UpgradeCardUI : MonoBehaviour
 
         if (titleText != null)
         {
-            titleText.text = data.upgradeName;
+            titleText.text = useWeaponDataText && data.grantsWeapon != null
+                ? data.grantsWeapon.weaponName
+                : data.upgradeName;
 
             // Fase 2: el color de la rareza se aplica al título. Se lee del SO en cada
             // SetupCard (no se cachea) para que un cambio de rareza en el Inspector se vea
@@ -145,8 +171,14 @@ public class UpgradeCardUI : MonoBehaviour
             }
         }
 
-        // Cerrar siempre el panel: dejarlo abierto congelaría la partida.
-        if (mainUI != null)
+        // Cerrar SIEMPRE el panel: dejarlo abierto congelaría la partida.
+        // Si el WeaponPanelUI registró un callback, es el que decide el cierre (porque su
+        // flujo es distinto: además tiene que reanudar el spawner).
+        if (OnSelectedOverride != null)
+        {
+            OnSelectedOverride(currentData);
+        }
+        else if (mainUI != null)
         {
             mainUI.HidePanel();
         }

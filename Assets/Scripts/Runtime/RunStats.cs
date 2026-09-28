@@ -365,62 +365,6 @@ public class RunStats : MonoBehaviour
         OnStatsChanged?.Invoke();
     }
 
-    /// <summary>
-    /// Aplica una mejora porcentual sobre las estadísticas de partida.
-    /// </summary>
-    /// <returns><c>true</c> si la mejora correspondía a una estadística aplicable.</returns>
-    public bool ApplyStatUpgrade(UpgradeType type, float percent)
-    {
-        if (!IsInitialized)
-        {
-            ResetToBase();
-        }
-
-        float valueBefore;
-        float valueAfter;
-
-        switch (type)
-        {
-            case UpgradeType.IncreaseDamage:
-                valueBefore = AttackDamage;
-                Accumulate(StatType.IncreaseDamage, StatOperation.PercentIncrease, percent);
-                valueAfter = AttackDamage;
-                break;
-
-            case UpgradeType.IncreaseRange:
-                valueBefore = AttackRange;
-                Accumulate(StatType.IncreaseRange, StatOperation.PercentIncrease, percent);
-                valueAfter = AttackRange;
-                break;
-
-            case UpgradeType.DecreaseAttackInterval:
-                valueBefore = AttackInterval;
-                // Un porcentaje POSITIVO acorta el intervalo, por eso se acumula en negativo.
-                Accumulate(StatType.DecreaseAttackInterval, StatOperation.PercentIncrease, -percent);
-                valueAfter = AttackInterval;
-                break;
-
-            case UpgradeType.IncreaseMoveSpeed:
-                valueBefore = MoveSpeed;
-                Accumulate(StatType.IncreaseMoveSpeed, StatOperation.PercentIncrease, percent);
-                valueAfter = MoveSpeed;
-                break;
-
-            default:
-                // HealPlayer y futuros efectos que no son estadísticas los gestiona UpgradeManager.
-                return false;
-        }
-
-        // Log obligatorio: si aquí aparece un GameObject distinto al del Player, el problema es de referencias.
-        Debug.Log(
-            $"<color=cyan>[RunStats:'{gameObject.name}'] {type} | ANTES: {valueBefore:0.00} → DESPUÉS: {valueAfter:0.00} (+{percent * 100f:0}%)</color>",
-            this);
-
-        LogCurrentValues($"{type} aplicada");
-        OnStatsChanged?.Invoke();
-        return true;
-    }
-
     /// <summary>Imprime en consola todos los valores de partida actuales.</summary>
     public void LogCurrentValues(string context)
     {
@@ -467,10 +411,10 @@ public class RunStats : MonoBehaviour
         if (modifier.stat == StatType.HealPlayer)
         {
             // No es un error: es una mejora de curación mal autorada como modificador.
-            // Se avisa porque lo esperable es usar UpgradeType.HealPlayer en su lugar.
+            // HealPlayer se gestiona en UpgradeManager.ApplyHeal, no como estadística acumulable.
             Debug.LogWarning(
                 $"[RunStats] El modificador '{modifier.name}' apunta a HealPlayer, que no es una " +
-                "estadística. Usa UpgradeType.HealPlayer en el UpgradeDataSO para curar.",
+                "estadística acumulable. Usa UpgradeManager.ApplyHeal para curar.",
                 modifier);
             return false;
         }

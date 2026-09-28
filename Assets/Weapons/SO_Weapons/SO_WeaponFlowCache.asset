@@ -1,0 +1,24 @@
+%YAML 1.1
+%TAG !u! tag:unity3d.com,2011:
+--- !u!114 &11400000
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 0}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 98403852a763929408873a8754e4c2dc, type: 3}
+  m_Name: SO_WeaponFlowCache
+  m_EditorClassIdentifier: Assembly-CSharp::WeaponFlowCache
+  startingWeapons:
+  - {fileID: 11400000, guid: 48199ed6aa7e4224cb0783977957d4b4, type: 2}
+  - {fileID: 11400000, guid: b64f31810e1502949be47b54e83be6bd, type: 2}
+  - {fileID: 11400000, guid: fbac815139586c943ae829a2305c75d0, type: 2}
+  - {fileID: 11400000, guid: 5e0dd17210a4cfe49b72e26bf4ff7122, type: 2}
+  bossRewards:
+  - {fileID: 11400000, guid: 69aea73692eb1a049a9c8e0af22044e5, type: 2}
+  - {fileID: 11400000, guid: 417659f5f7aa12447bff762086380108, type: 2}
+  - {fileID: 11400000, guid: 8b2161dce4c2a35479df2c4563239ff3, type: 2}
+  - {fileID: 11400000, guid: 8b3ca5f88aa4756479817ae0e21034d8, type: 2}

@@ -115,6 +115,8 @@ public static class StatTypeUtility
     /// así que la conversión es una proyección directa; el <c>default</c> cubre valores
     /// corruptos o futuros sin lanzar excepciones en mitad de una partida.
     /// </summary>
+    [System.Obsolete("El sistema v1 (UpgradeType) se eliminó. Usa StatModifierSO: escribe el StatType directamente. " +
+                     "Este método se conserva solo para leer assets antiguos durante una migración.")]
     public static StatType ToStatType(this UpgradeType type)
     {
         switch (type)

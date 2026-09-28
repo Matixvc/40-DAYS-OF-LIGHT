@@ -18,7 +18,15 @@ using UnityEngine;
 ///
 /// NO TOCA RunDirector NI LevelUpUI: se limita a suscribirse a sus eventos, de modo que
 /// ninguno de los dos necesita saber que este flujo existe.
+///
+/// ORDEN DE EJECUCIÓN (crítico): <see cref="RunDirector"/> tiene
+/// <c>DefaultExecutionOrder(-400)</c> y dispara <c>OnRunStarted</c> dentro de su propio
+/// <c>Start()</c>. Este componente se declara en <c>-450</c>, ANTES, a propósito: si se
+/// suscribiera después, el evento ya se habría emitido y el panel no se abriría nunca.
+/// Es un fallo silencioso: la suscripción es válida, solo llega tarde. Por eso, además del
+/// orden, <see cref="CatchUpIfRunAlreadyStarted"/> cubre el caso restante.
 /// </summary>
+[DefaultExecutionOrder(-450)]
 [DisallowMultipleComponent]
 [AddComponentMenu("Gameplay/Run Weapon Flow")]
 public class RunWeaponFlow : MonoBehaviour
@@ -53,6 +61,14 @@ public class RunWeaponFlow : MonoBehaviour
     [Tooltip("Cartas ofrecidas al derrotar a un jefe. Vacío = se usa el sorteo normal.")]
     [SerializeField] private List<UpgradeDataSO> bossRewardUpgrades = new List<UpgradeDataSO>();
 
+    [Header("Panel de elección de arma (WeaponPanelUI)")]
+    [Tooltip("Panel que ofrece 2 armas. Si se deja vacío se busca en la escena por nombre.")]
+    [SerializeField] private WeaponPanelUI weaponPanel;
+
+    [Tooltip("Si está activo, usa WeaponPanelUI (2 opciones de arma). Desactívalo para usar el " +
+             "LevelUpUI de 3 cartas aleatorias en vez del panel de armas.")]
+    [SerializeField] private bool preferWeaponPanel = true;
+
     [Header("Depuración")]
     [SerializeField] private bool logFlow = true;
 
@@ -71,6 +87,33 @@ public class RunWeaponFlow : MonoBehaviour
         // En Start han terminado todos los Awake: momento seguro para resolver referencias.
         ResolveReferences();
         Subscribe();
+
+        // Red de seguridad: si por lo que sea la partida ya estaba corriendo cuando nos
+        // suscribimos (orden de ejecución alterado, escena reentrante, dominio recargado),
+        // el evento OnRunStarted ya se emitió y nunca lo veríamos. Esto cubre ese hueco.
+        CatchUpIfRunAlreadyStarted();
+    }
+
+    /// <summary>
+    /// Abre el panel del arma inicial si la partida ya había empezado cuando este componente
+    /// se suscribió. Es idempotente: <see cref="HandleRunStarted"/> y el propio panel ya se
+    /// protegen con <c>awaitingInitialChoice</c> / <c>IsVisible</c>, así que llamarlo dos veces
+    /// no duplica nada.
+    /// </summary>
+    private void CatchUpIfRunAlreadyStarted()
+    {
+        if (runDirector == null || !runDirector.IsRunActive) return;
+        if (awaitingInitialChoice) return;
+
+        if (logFlow)
+        {
+            Debug.Log(
+                "[RunWeaponFlow] La partida ya estaba en marcha al suscribirse: se recupera la " +
+                "elección de arma inicial.",
+                this);
+        }
+
+        HandleRunStarted(runDirector.Difficulty, runDirector.TotalRounds);
     }
 
     private void OnDestroy()
@@ -103,6 +146,34 @@ public class RunWeaponFlow : MonoBehaviour
             PlayerController player = FindAnyObjectByType<PlayerController>();
             weaponController = player != null ? player.GetComponent<WeaponController>() : null;
         }
+
+        if (weaponPanel == null)
+        {
+            // Búsqueda por nombre: el panel es un objeto concreto de la escena de producción,
+            // no un componente que pueda haber varios. Un Find por tipo podría coger el
+            // panel equivocado si alguien duplicase la escena.
+            GameObject[] roots = UnityEngine.SceneManagement.SceneManager.GetActiveScene().GetRootGameObjects();
+
+            for (int i = 0; i < roots.Length; i++)
+            {
+                Transform[] found = roots[i].GetComponentsInChildren<Transform>(true);
+                weaponPanel = FindNamedPanel(found);
+            }
+        }
+    }
+
+    /// <summary>Localiza el GameObject 'WeaponPanelUI' y devuelve su componente, si lo tiene.</summary>
+    private static WeaponPanelUI FindNamedPanel(Transform[] candidates)
+    {
+        for (int i = 0; i < candidates.Length; i++)
+        {
+            if (candidates[i] != null && candidates[i].name == "WeaponPanelUI")
+            {
+                return candidates[i].GetComponent<WeaponPanelUI>();
+            }
+        }
+
+        return null;
     }
 
     private void Subscribe()
@@ -146,12 +217,19 @@ public class RunWeaponFlow : MonoBehaviour
     private void HandleRunStarted(RunDifficulty difficulty, int totalRounds)
     {
         if (!enableStartingWeaponChoice) return;
-        if (levelUpUI == null) return;
+
+        // Basta con que exista UNO de los dos paneles: el de armas es el preferido, pero
+        // el de nivel sirve de respaldo. Antes esta guarda exigía LevelUpUI y cortaba el
+        // flujo aunque el WeaponPanelUI estuviera cableado correctamente.
+        bool hasWeaponPanel = preferWeaponPanel && weaponPanel != null;
+
+        if (!hasWeaponPanel && levelUpUI == null) return;
 
         // Sin arma inicial ya equipada no hay nada que elegir.
         if (weaponController != null && weaponController.WeaponCount > 0) return;
 
-        if (startingWeaponUpgrades == null || startingWeaponUpgrades.Count == 0)
+        // El WeaponPanelUI trae su propio catálogo, así que no exige la lista de aquí.
+        if (!hasWeaponPanel && (startingWeaponUpgrades == null || startingWeaponUpgrades.Count == 0))
         {
             // No es un error grave: el juego sigue con el arma por defecto.
             Debug.LogWarning(
@@ -166,6 +244,20 @@ public class RunWeaponFlow : MonoBehaviour
         // Nada de enemigos detrás del panel: la elección debe leerse limpia.
         PauseSpawner();
 
+        if (preferWeaponPanel && weaponPanel != null)
+        {
+            // El WeaponPanelUI se pausa y reanuda solo, así que basta con abrirlo.
+            weaponPanel.ShowWeaponSelection(2);
+
+            if (logFlow)
+            {
+                Debug.Log("<color=cyan>[RunWeaponFlow] Elige tu arma inicial (2 opciones).</color>", this);
+            }
+
+            return;
+        }
+
+        // Respaldo: el panel de nivel de 3 cartas, con las armas iniciales como catálogo.
         levelUpUI.OnPanelClosed -= HandlePanelClosed;
         levelUpUI.OnPanelClosed += HandlePanelClosed;
 
@@ -201,6 +293,14 @@ public class RunWeaponFlow : MonoBehaviour
             Debug.Log(
                 $"<color=cyan>[RunWeaponFlow] Jefe de la ronda {round} derrotado: eliges recompensa.</color>",
                 this);
+        }
+
+        // El panel de armas filtra solo lo que el jugador ya tiene, así que es el correcto
+        // para la recompensa: ofrecer un arma repetida hace que el premio parezca un fallo.
+        if (preferWeaponPanel && weaponPanel != null)
+        {
+            weaponPanel.ShowWeaponSelection(2);
+            return;
         }
 
         if (bossRewardUpgrades != null && bossRewardUpgrades.Count > 0)

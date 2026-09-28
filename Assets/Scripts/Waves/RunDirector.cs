@@ -298,7 +298,7 @@ public class RunDirector : MonoBehaviour
         OnRoundStarted?.Invoke(CurrentRound, IsNightRound);
         OnRoundTimeChanged?.Invoke(RoundTimeRemaining, CurrentRoundDuration);
 
-        if (logRunEvents)
+        if (logRunEvents && GameStateController.VerboseLogsEnabled)
         {
             string nightTag = IsNightRound ? " (NOCHE)" : string.Empty;
             Debug.Log(
@@ -364,7 +364,7 @@ public class RunDirector : MonoBehaviour
 
         OnRunEnded?.Invoke(victory);
 
-        if (logRunEvents)
+        if (logRunEvents && GameStateController.VerboseLogsEnabled)
         {
             Debug.Log(
                 $"<color={(victory ? "green" : "red")}>[RunDirector] Partida terminada | Día {CurrentRound}/{totalRounds} | {(victory ? "VICTORIA" : "DERROTA")}</color>",

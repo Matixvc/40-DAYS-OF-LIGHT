@@ -79,15 +79,17 @@ public class UpgradeManager : MonoBehaviour
     }
 
     /// <summary>
+    /// <summary>
     /// Aplica el efecto real de la mejora sobre el estado de partida.
     ///
-    /// Dos caminos, y solo dos:
-    ///   1) v2 — la mejora declara <c>modifiers[]</c>: cada modificador se acumula en el canal
-    ///      de su <see cref="StatType"/>. <c>upgradeType</c> y <c>value</c> se IGNORAN.
-    ///   2) Heredado — sin modificadores: el comportamiento original intacto, para que los
-    ///      assets SO_Upgrade_Damage/Range/AttackSpeed/Speed/Heal sigan funcionando igual.
+    /// UN SOLO CAMINO: la lista <c>modifiers[]</c>. Cada modificador se acumula en el canal de
+    /// su <see cref="StatType"/>.
     ///
-    /// <c>grantsWeapon</c> es ortogonal: puede acompañar a cualquiera de los dos caminos.
+    /// Se eliminó el camino heredado (<c>upgradeType</c> + <c>value</c>) para que toda mejora se
+    /// declare de una sola manera. Con dos rutas, una mejora nueva acababa usando la que
+    /// encontrara primero y las dos se desincronizaban.
+    ///
+    /// <c>grantsWeapon</c> es ortogonal: puede acompañar a cualquier mejora.
     /// </summary>
     /// <returns><c>true</c> si la mejora se aplicó correctamente.</returns>
     public bool ApplyUpgrade(UpgradeDataSO upgrade)
@@ -130,31 +132,16 @@ public class UpgradeManager : MonoBehaviour
         return true;
     }
 
-    /// <summary>Dispatcher del efecto. Devuelve false si la mejora no tenía nada que hacer.</summary>
+    /// <summary>
+    /// Aplica el efecto de la mejora. Ruta ÚNICA: la lista de <c>modifiers</c>.
+    ///
+    /// No existe camino heredado (upgradeType + value): se eliminó para que toda mejora
+    /// se declare igual y no haya dos formas de hacer lo mismo que se pudieran desincronizar.
+    /// </summary>
+    /// <returns>False si la mejora no tenía nada que hacer.</returns>
     private bool ApplyUpgradeEffect(UpgradeDataSO upgrade)
     {
-        bool applied;
-
-        if (upgrade.UsesModifiers)
-        {
-            applied = ApplyModifierList(upgrade);
-        }
-        else if (upgrade.upgradeType == UpgradeType.HealPlayer)
-        {
-            applied = ApplyHeal(upgrade.value);
-        }
-        else
-        {
-            if (Mathf.Approximately(upgrade.value, 0f))
-            {
-                Debug.LogWarning(
-                    $"[UpgradeManager] La mejora '{upgrade.upgradeName}' tiene value = 0 y no tendrá efecto.",
-                    upgrade);
-                return false;
-            }
-
-            applied = ApplyStatUpgrade(upgrade);
-        }
+        bool applied = ApplyModifierList(upgrade);
 
         // El arma se concede aunque los modificadores fallen (o no existan): es un efecto
         // independiente y perderlo dejaría la carta inútil sin motivo.
@@ -167,7 +154,7 @@ public class UpgradeManager : MonoBehaviour
         {
             Debug.LogWarning(
                 $"[UpgradeManager] La mejora '{upgrade.upgradeName}' no ha producido ningún efecto: " +
-                "revisa sus modificadores, su tipo y su arma.",
+                "añádele al menos un modificador o asígnale un arma en 'Arma Otorgada'.",
                 upgrade);
         }
 
@@ -194,35 +181,13 @@ public class UpgradeManager : MonoBehaviour
         return applied;
     }
 
-    private bool ApplyStatUpgrade(UpgradeDataSO upgrade)
-    {
-        if (runStats == null)
-        {
-            Debug.LogError(
-                "[UpgradeManager] Falta asignar RunStats en el Inspector. La mejora no se aplicará.",
-                this);
-            return false;
-        }
-
-        bool applied = runStats.ApplyStatUpgrade(upgrade.upgradeType, upgrade.value);
-
-        if (applied && logUpgrades)
-        {
-            // El "mejora aplicada" lo registra ApplyUpgrade; aquí solo se deja constancia del
-            // RunStats concreto que la recibió: si aparece otro GameObject, es un duplicado.
-            Debug.Log(
-                $"<color=cyan>[UpgradeManager] '{upgrade.upgradeName}' aplicada sobre RunStats de " +
-                $"'{runStats.gameObject.name}' (camino heredado).</color>",
-                this);
-        }
-
-        return applied;
-    }
-
     /// <summary>
-    /// Cura un porcentaje de la vida máxima. El valor del SO se interpreta como fracción (0.3 = 30%).
+    /// Cura un porcentaje de la vida máxima.
+    ///
+    /// Se mantiene como método público porque la usan las herramientas de editor y el sandbox
+    /// para simular una curación sin necesidad de un UpgradeDataSO con StatType.HealPlayer.
     /// </summary>
-    private bool ApplyHeal(float healthPercent)
+    public bool ApplyHeal(float healthPercent)
     {
         if (playerHealth == null)
         {

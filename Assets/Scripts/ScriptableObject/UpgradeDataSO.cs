@@ -1,19 +1,31 @@
 using UnityEngine;
 
+/// <summary>
+/// Rareza de una mejora. Se usa SOLO para presentación (color de la carta, peso del sorteo):
+/// no cambia la mecánica. Empieza en <c>Common = 0</c> para que los assets creados antes
+/// de esta versión se lean como "común" sin migración alguna.
+/// </summary>
+/// <summary>
+/// Enum LEGACY de efectos v1. Ya NO se usa para aplicar nada: el sistema de mejoras es
+/// 100% v2 (<see cref="StatModifierSO"/> + <see cref="StatType"/>).
+///
+/// Se conserva solo para leer el método <see cref="StatTypeUtility.ToStatType"/>, que traduce
+/// un valor antiguo al enum nuevo durante una migración. Nada del gameplay lo invoca.
+///
+/// NO añadir ni reordenar miembros: los índices 0..4 están congelados porque así quedaron
+/// guardados en los assets del proyecto.
+/// </summary>
+[System.Obsolete("El sistema v1 (UpgradeType) está retirado. Escribe el StatType directamente " +
+                 "en el StatModifierSO de la mejora.")]
 public enum UpgradeType
 {
-    IncreaseDamage,
-    IncreaseRange,
-    DecreaseAttackInterval,
-    IncreaseMoveSpeed,
-    HealPlayer
+    IncreaseDamage = 0,
+    IncreaseRange = 1,
+    DecreaseAttackInterval = 2,
+    IncreaseMoveSpeed = 3,
+    HealPlayer = 4
 }
 
-/// <summary>
-/// Rareza de una mejora. Añadida en la Fase 2 y usada SOLO para presentación (color de la
-/// carta, peso del sorteo): no cambia la mecánica. Empieza en <c>Common = 0</c> para que
-/// los assets creados antes de esta versión se lean como "común" sin migración alguna.
-/// </summary>
 public enum UpgradeRarity
 {
     Common = 0,
@@ -26,14 +38,15 @@ public enum UpgradeRarity
 [CreateAssetMenu(fileName = "NewUpgrade", menuName = "Stats/Upgrade Data")]
 public class UpgradeDataSO : ScriptableObject
 {
-    [Header("Información de la Mejora")]
-    public string upgradeName = "Más Daño";
-    [TextArea] public string description = "+20% de daño al Destello de Luz";
+    [Header("Información Básica")]
+    public string upgradeName = "Nueva Mejora";
+    [TextArea(2, 4)] public string description;
     public Sprite icon;
 
-    [Header("Efecto")]
-    public UpgradeType upgradeType;
-    public float value = 0.2f; // <-- Nombre exacto 'value' para corregir los errores
+    [Header("Arma Otorgada (opcional)")]
+    [Tooltip("Si se asigna, aplicar la mejora equipa (o sube de nivel) esta arma en el " +
+             "WeaponController del Player. Deja vacío para mejoras de estadística puras.")]
+    public WeaponDataSO grantsWeapon;
 
     // ==================================================================
     // AMPLIACIÓN v2 (Fase 2)
@@ -43,16 +56,12 @@ public class UpgradeDataSO : ScriptableObject
     // leyéndose igual: si un asset no trae estas claves, conservan el valor del inicializador.
     // ==================================================================
 
-    [Header("Modificadores v2 (opcional)")]
-    [Tooltip("Si la lista tiene elementos, MANDA ella y se ignoran 'upgradeType' y 'value'.\n" +
-             "Permite que una sola mejora toque varias estadísticas a la vez (+10% daño y +5% velocidad).")]
+    [Header("Modificadores Pasivos")]
+    [Tooltip("Efecto de la mejora. Cada StatModifierSO es una estadística con su operación.\n" +
+             "Se admiten varios por carta: así una sola mejora puede tocar dos estadísticas.")]
     public StatModifierSO[] modifiers = new StatModifierSO[0];
 
-    [Header("Arma otorgada (opcional)")]
-    [Tooltip("Si se asigna, aplicar la mejora equipa (o sube de nivel) esta arma en el WeaponController del Player.")]
-    public WeaponDataSO grantsWeapon;
-
-    [Header("Rareza y acumulación (v2)")]
+    [Header("Rareza y Acumulación")]
     public UpgradeRarity rarity = UpgradeRarity.Common;
 
     [Tooltip("Cuántas veces puede elegirse esta mejora en la misma partida. 1 = única.")]
@@ -65,13 +74,12 @@ public class UpgradeDataSO : ScriptableObject
     public bool UsesModifiers => modifiers != null && modifiers.Length > 0;
 
     /// <summary>
-    /// True si la mejora declara algún efecto. Una mejora sin modificadores, sin arma y con
-    /// value 0 no hace nada: <see cref="UpgradeManager"/> lo avisa en lugar de gastar la elección.
+    /// True si la mejora declara algún efecto: al menos un modificador o un arma.
+    ///
+    /// Una carta sin ninguno de los dos no hace nada, y <see cref="UpgradeManager"/> avisa
+    /// en vez de gastar la elección del jugador.
     /// </summary>
-    public bool HasAnyEffect => UsesModifiers
-        || grantsWeapon != null
-        || upgradeType == UpgradeType.HealPlayer
-        || !Mathf.Approximately(value, 0f);
+    public bool HasAnyEffect => UsesModifiers || grantsWeapon != null;
 
     /// <summary>Color de presentación de la rareza, para el título de la carta de mejora.</summary>
     public Color RarityColor
@@ -97,7 +105,7 @@ public class UpgradeDataSO : ScriptableObject
     {
         if (!UsesModifiers)
         {
-            return string.IsNullOrEmpty(description) ? upgradeType.ToString() : description;
+            return string.IsNullOrEmpty(description) ? "Sin modificadores" : description;
         }
 
         System.Text.StringBuilder summary = new System.Text.StringBuilder(96);

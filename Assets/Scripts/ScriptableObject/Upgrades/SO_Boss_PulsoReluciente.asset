@@ -1,0 +1,25 @@
+%YAML 1.1
+%TAG !u! tag:unity3d.com,2011:
+--- !u!114 &11400000
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 0}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 0f7b34bf1d5807a4c9b769c252f08c96, type: 3}
+  m_Name: SO_Boss_PulsoReluciente
+  m_EditorClassIdentifier: Assembly-CSharp::UpgradeDataSO
+  upgradeName: PulsoReluciente
+  description: 'El Boss te da esta Arma
+
+'
+  icon: {fileID: 0}
+  grantsWeapon: {fileID: 11400000, guid: ded2c8b777e116243ad7c1b3c34cf85b, type: 2}
+  modifiers:
+  - {fileID: 11400000, guid: 0bf0991b4aa54584fa87067f678955a9, type: 2}
+  rarity: 4
+  maxStacks: 3
+  weight: 10

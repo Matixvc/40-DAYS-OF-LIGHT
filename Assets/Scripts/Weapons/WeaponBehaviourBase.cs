@@ -35,7 +35,22 @@ public abstract class WeaponBehaviourBase : MonoBehaviour, IWeaponBehaviour
     protected readonly float[] distanceBuffer = new float[WeaponTargeting.MaxDistinctTargets];
 
     // Un único MaterialPropertyBlock por comportamiento: tintar con él no instancia el material.
-    private readonly MaterialPropertyBlock propertyBlock = new MaterialPropertyBlock();
+    //
+    // INICIALIZACIÓN PEREZOSA Y OBLIGATORIA: MaterialPropertyBlock deriva de UnityEngine.Object,
+    // y crearlo en un inicializador de campo lo construye DENTRO del constructor del
+    // MonoBehaviour. En ese punto el objeto nativo aún no existe y Unity lanza:
+    //   "CreateImpl is not allowed to be called from a MonoBehaviour constructor"
+    //
+    // Además el bloque se comparte entre todos los renderers del arma, así que no puede
+    // liberarse entre usos: se crea una sola vez, la primera vez que hace falta, y se
+    // reutiliza de ahí en adelante (cero GC en el bucle de combate).
+    private MaterialPropertyBlock propertyBlock;
+
+    /// <summary>
+    /// Acceso perezoso al bloque de propiedades. Garantiza que nunca sea null en
+    /// <see cref="TintVisual"/> aunque el arma se equipe antes de que se haya tintado nada.
+    /// </summary>
+    protected MaterialPropertyBlock PropBlock => propertyBlock ?? (propertyBlock = new MaterialPropertyBlock());
 
     private static readonly int BaseColorId = Shader.PropertyToID("_BaseColor");
     private static readonly int ColorId = Shader.PropertyToID("_Color");
@@ -159,6 +174,15 @@ public abstract class WeaponBehaviourBase : MonoBehaviour, IWeaponBehaviour
 
         Renderer[] renderers = visual.GetComponentsInChildren<Renderer>(true);
 
+        if (renderers == null || renderers.Length == 0)
+        {
+            return;
+        }
+
+        // Se resuelve UNA vez por llamada, ya creado: la inicialización perezosa ocurre aquí,
+        // nunca en el constructor, que es justo lo que Unity prohíbe.
+        MaterialPropertyBlock block = PropBlock;
+
         for (int i = 0; i < renderers.Length; i++)
         {
             Renderer renderer = renderers[i];
@@ -168,11 +192,15 @@ public abstract class WeaponBehaviourBase : MonoBehaviour, IWeaponBehaviour
                 continue;
             }
 
-            renderer.GetPropertyBlock(propertyBlock);
-            propertyBlock.SetColor(BaseColorId, opaque);
-            propertyBlock.SetColor(ColorId, opaque);
-            propertyBlock.SetColor(EmissionColorId, opaque * 0.6f);
-            renderer.SetPropertyBlock(propertyBlock);
+            // GetPropertyBlock sobreescribe el bloque con el del renderer, así que se limpia
+            // antes de escribir: de lo contrario, propiedades de un mesh se filtrarían a otro.
+            block.Clear();
+
+            renderer.GetPropertyBlock(block);
+            block.SetColor(BaseColorId, opaque);
+            block.SetColor(ColorId, opaque);
+            block.SetColor(EmissionColorId, opaque * 0.6f);
+            renderer.SetPropertyBlock(block);
         }
     }
 

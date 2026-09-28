@@ -40,7 +40,49 @@ public class GameStateController : MonoBehaviour
     [Header("Depuración")]
     [SerializeField] private bool logStateChanges = true;
 
+    [Header("Ruido de consola")]
+    [Tooltip("Logs informativos de bajo nivel (spawns, escalados, euphemias de estado). " +
+             "APAGADO por defecto: en una partida con hordas llegan cientos de líneas por minuto " +
+             "y tapan los warnings que sí importan. Los LogWarning y LogError NUNCA se silencian.")]
+    [SerializeField] private bool enableVerboseLogs = false;
+
     private const float FrozenTimeScale = 0f;
+
+    /// <summary>
+    /// Interruptor global de logs informativos. Se consulta desde toda la partida para no
+    /// tener que duplicar la opción en cada script.
+    /// </summary>
+    public static bool VerboseLogsEnabled { get; private set; }
+
+    /// <summary>
+    /// Log informativo que solo sale si el modo verboso está activo. Los avisos y errores
+    /// usan Debug.LogWarning / Debug.LogError directamente y nunca se silencian.
+    /// </summary>
+    /// <param name="context">Objeto de Unity al que se atribuya el log (para el botón de "seleccionar").</param>
+    /// <remarks>
+    /// <c>UnityEngine.Object</c> está QUALIFICADO a propósito: el archivo tiene
+    /// <c>using System;</c> y <c>using UnityEngine;</c>, así que el identificador suelto
+    /// <c>Object</c> es ambiguo entre <c>System.Object</c> y <c>UnityEngine.Object</c> (CS0104).
+    /// </remarks>
+    public static void LogVerbose(object message, UnityEngine.Object context = null)
+    {
+        if (VerboseLogsEnabled)
+        {
+            Debug.Log(message, context);
+        }
+    }
+
+    /// <summary>
+    /// Fuerza el modo verboso desde código de editor o de herramientas.
+    ///
+    /// Existe para que una herramienta externa (el limpiador de consola, el configurador de 1 clic)
+    /// pueda apagar los logs ruidosos SIN tocar el asset de la escena: el valor serializado en el
+    /// Inspector se aplica al arrancar, pero en Play Mode esto manda y el ruido se detiene ya.
+    /// </summary>
+    public static void SetVerboseLogs(bool value)
+    {
+        VerboseLogsEnabled = value;
+    }
 
     /// <summary>
     /// Factor de la micro-pausa de impacto. 1 = sin pausa en curso.
@@ -81,7 +123,10 @@ public class GameStateController : MonoBehaviour
 
     private void Start()
     {
-        // Boot es transitorio y no se valida.
+        // El interruptor de verbosidad debe estar listo ANTES que cualquier otro script
+        // escriba logs: se publica aquí, en el primer Start() que corre (-1000).
+        VerboseLogsEnabled = enableVerboseLogs;
+
         // Se limpia cualquier micro-pausa heredada de la partida anterior: el factor del
         // hit-stop arranca en 1 y ApplyState (vía ApplyTimeScale) escribe la escala correcta,
         // así que el reinicio de escena deja el tiempo limpio sin escribirlo aquí.
